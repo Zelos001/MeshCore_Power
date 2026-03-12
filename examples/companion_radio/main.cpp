@@ -243,6 +243,7 @@ void setup() {
 }
 
 void loop() {
+  board.loop();
   the_mesh.loop();
   sensors.loop();
 #ifdef DISPLAY_CLASS
