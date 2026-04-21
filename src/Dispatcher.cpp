@@ -68,7 +68,8 @@ void Dispatcher::loop() {
       next_tx_time = futureMillis(t * getAirtimeBudgetFactor());
 
       _radio->onSendFinished();
-      logTx(outbound, 2 + outbound->path_len + outbound->payload_len);
+      logTx(outbound, 2 + outbound->getPathByteLen() + outbound->payload_len);
+      onSendComplete(outbound);
       if (outbound->isRouteFlood()) {
         n_sent_flood++;
       } else {
@@ -80,7 +81,8 @@ void Dispatcher::loop() {
       MESH_DEBUG_PRINTLN("%s Dispatcher::loop(): WARNING: outbound packed send timed out!", getLogDateTime());
 
       _radio->onSendFinished();
-      logTxFail(outbound, 2 + outbound->path_len + outbound->payload_len);
+      logTxFail(outbound, 2 + outbound->getPathByteLen() + outbound->payload_len);
+      onSendFail(outbound);
 
       releasePacket(outbound);  // return to pool
       outbound = NULL;
