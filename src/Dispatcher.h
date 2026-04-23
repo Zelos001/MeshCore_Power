@@ -161,6 +161,8 @@ protected:
   virtual uint32_t getCADFailMaxDuration() const;
   virtual int getInterferenceThreshold() const { return 0; }    // disabled by default
   virtual int getAGCResetInterval() const { return 0; }    // disabled by default
+  virtual unsigned long getDutyCycleWindowMs() const { return 3600000; }
+  const Packet* getOutboundInFlight() const { return outbound; }
 
 public:
   void begin();
