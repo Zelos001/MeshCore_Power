@@ -822,7 +822,7 @@ where `&type` is:
 ### 7.6. Q: How do I connect to the companion via WIFI, e.g. using a heltec v3?
  **A:**
 WiFi firmware requires you to compile it yourself, as you need to set the wifi ssid and password.
-Edit WIFI_SSID and WIFI_PWD in `./variants/heltec_v3/platformio.ini` and then flash it to your device.
+Edit WIFI_SSID and WIFI_PASSWORD in `platformio.ini` and then flash it to your device.
 
 ### 7.7. Q: I have a Station G2, or a Heltec V4, or an Ikoka Stick, or a radio with a EByte E22-900M30S or a E22-900M33S module, what should their transmit power be set to?
  **A:**

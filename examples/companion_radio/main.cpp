@@ -174,7 +174,7 @@ void setup() {
   );
 
   //#ifdef WIFI_SSID
-  //  WiFi.begin(WIFI_SSID, WIFI_PWD);
+  //  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   //  serial_interface.begin(TCP_PORT);
   // #elif defined(BLE_PIN_CODE)
   //   char dev_name[32+16];
@@ -213,7 +213,7 @@ void setup() {
       }
   });
 
-  WiFi.begin(WIFI_SSID, WIFI_PWD);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   serial_interface.begin(TCP_PORT);
 #elif defined(BLE_PIN_CODE)
   serial_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
