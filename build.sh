@@ -300,11 +300,47 @@ fetch_suggested_radio_settings() {
   python3 - "$RADIO_SETTINGS_API_URL" <<'PY'
 import json
 import sys
+import urllib.error
 import urllib.request
 
 url = sys.argv[1]
-with urllib.request.urlopen(url, timeout=8) as response:
-    payload = json.load(response)
+header_sets = [
+    {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "application/json,text/plain,*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://meshcore.nz/",
+        "Origin": "https://meshcore.nz",
+    },
+    {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0",
+        "Accept": "application/json,text/plain,*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://meshcore.nz/",
+        "Origin": "https://meshcore.nz",
+    },
+]
+
+payload = None
+errors = []
+
+for index, headers in enumerate(header_sets, start=1):
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=8) as response:
+            payload = json.load(response)
+        break
+    except urllib.error.HTTPError as exc:
+        errors.append(f"attempt {index}: HTTP {exc.code}")
+        continue
+    except Exception as exc:
+        errors.append(f"attempt {index}: {type(exc).__name__}")
+        continue
+
+if payload is None:
+    summary = "; ".join(errors) if errors else "unknown error"
+    print(f"Failed to fetch radio presets from {url} ({summary})", file=sys.stderr)
+    raise SystemExit(1)
 
 entries = (
     payload.get("config", {})
