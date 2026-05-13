@@ -14,6 +14,9 @@ RADIO_BW_OVERRIDE=""
 RADIO_SF_OVERRIDE=""
 RADIO_CR_OVERRIDE=""
 FIRMWARE_PROFILE_OVERRIDE=""
+WIFI_SSID_OVERRIDE=""
+WIFI_PWD_OVERRIDE=""
+WIFI_DEBUG_LOGGING_OVERRIDE=""
 
 ENV_VARIANT_SUFFIX_PATTERN='companion_radio_serial|companion_radio_wifi|companion_radio_usb|comp_radio_usb|companion_usb|companion_radio_ble|companion_ble|repeater_bridge_rs232_serial1|repeater_bridge_rs232_serial2|repeater_bridge_rs232|repeater_bridge_espnow|terminal_chat|room_server|room_svr|kiss_modem|sensor|repeatr|repeater'
 BOARD_MODIFIER_WITHOUT_DISPLAY="_without_display"
@@ -61,7 +64,7 @@ Examples:
 Build firmware for the "RAK_4631_repeater" device target
 $ bash build.sh build-firmware RAK_4631_repeater
 
-Run without arguments to choose an interactive build action/target, debug options, and radio settings
+Run without arguments to choose an interactive build action/target, debug options, radio settings, and (when applicable) Wi-Fi settings
 $ bash build.sh
 
 Build all firmwares for device targets containing the string "RAK_4631"
@@ -504,6 +507,81 @@ prompt_for_radio_build_settings() {
   done
 }
 
+clear_wifi_overrides() {
+  WIFI_SSID_OVERRIDE=""
+  WIFI_PWD_OVERRIDE=""
+  WIFI_DEBUG_LOGGING_OVERRIDE=""
+}
+
+is_wifi_build_target() {
+  local env_name=$1
+  local is_wifi=1
+
+  shopt -s nocasematch
+  if [[ "$env_name" == *companion_radio_wifi* ]]; then
+    is_wifi=0
+  fi
+  shopt -u nocasematch
+
+  return "$is_wifi"
+}
+
+selected_command_uses_wifi_target() {
+  case "${SELECTED_COMMAND_ARGS[0]:-}" in
+    build-firmware)
+      is_wifi_build_target "${SELECTED_COMMAND_ARGS[1]:-}"
+      return $?
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+prompt_for_wifi_build_settings() {
+  local -a options=(
+    "Keep target defaults (no Wi-Fi override)"
+    "Custom Wi-Fi SSID/password"
+  )
+  local choice_index
+
+  clear_wifi_overrides
+
+  echo "Set Wi-Fi build options:"
+  while true; do
+    print_numbered_menu "${options[@]}"
+    prompt_menu_choice "Wi-Fi setting" "${#options[@]}"
+    if [ "$MENU_CHOICE" == "QUIT" ]; then
+      echo "Cancelled."
+      exit 1
+    fi
+
+    choice_index=$MENU_CHOICE
+    case "$choice_index" in
+      1)
+        echo "Using target default Wi-Fi settings."
+        return 0
+        ;;
+      2)
+        read -r -p "Wi-Fi SSID: " WIFI_SSID_OVERRIDE
+        read -r -p "Wi-Fi password (blank allowed): " WIFI_PWD_OVERRIDE
+        prompt_on_off_choice "Wi-Fi debug logging (WIFI_DEBUG_LOGGING)" "off"
+        WIFI_DEBUG_LOGGING_OVERRIDE="$MENU_CHOICE"
+        echo "Using Wi-Fi overrides: ssid='${WIFI_SSID_OVERRIDE}', wifi_debug=${WIFI_DEBUG_LOGGING_OVERRIDE}"
+        return 0
+        ;;
+    esac
+  done
+}
+
+escape_cpp_string_literal() {
+  local value=$1
+
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  printf '%s' "$value"
+}
+
 get_env_metadata() {
   local env_name=$1
   local trimmed_env_name
@@ -874,6 +952,37 @@ apply_firmware_profile_overrides() {
   esac
 }
 
+apply_wifi_overrides() {
+  local env_name=$1
+  local ssid_escaped
+  local pwd_escaped
+
+  if ! is_wifi_build_target "$env_name"; then
+    return 0
+  fi
+
+  if [ -n "$WIFI_SSID_OVERRIDE" ]; then
+    ssid_escaped=$(escape_cpp_string_literal "$WIFI_SSID_OVERRIDE")
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -D WIFI_SSID='\"${ssid_escaped}\"'"
+  fi
+
+  if [ -n "$WIFI_SSID_OVERRIDE" ] || [ -n "$WIFI_PWD_OVERRIDE" ]; then
+    pwd_escaped=$(escape_cpp_string_literal "$WIFI_PWD_OVERRIDE")
+    export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -D WIFI_PWD='\"${pwd_escaped}\"'"
+  fi
+
+  case "${WIFI_DEBUG_LOGGING_OVERRIDE,,}" in
+    on)
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -D WIFI_DEBUG_LOGGING=1"
+      ;;
+    off)
+      if [ -n "$WIFI_SSID_OVERRIDE" ] || [ -n "$WIFI_PWD_OVERRIDE" ]; then
+        export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -D WIFI_DEBUG_LOGGING=0"
+      fi
+      ;;
+  esac
+}
+
 copy_build_output() {
   local source_path=$1
   local output_path=$2
@@ -970,6 +1079,7 @@ build_firmware() {
   apply_debug_overrides
   apply_radio_overrides
   apply_firmware_profile_overrides
+  apply_wifi_overrides "$env_name"
 
   pio run -e "$env_name"
   collect_build_artifacts "$env_name" "$env_platform" "$firmware_filename"
@@ -1092,6 +1202,11 @@ main() {
     prompt_for_debug_build_settings
     prompt_for_radio_build_settings
     prompt_for_cascadia_profile_enable
+    if selected_command_uses_wifi_target; then
+      prompt_for_wifi_build_settings
+    else
+      clear_wifi_overrides
+    fi
     set -- "${SELECTED_COMMAND_ARGS[@]}"
   fi
 
