@@ -213,7 +213,7 @@ prompt_on_off_choice() {
   esac
 
   while true; do
-    read -r -p "${prompt_label} [on/off/1/0] (default: ${normalized_default}): " choice
+    read -r -p "${prompt_label} [on(1)/off(0)] (default: ${normalized_default}): " choice
     choice=${choice,,}
     if [ -z "$choice" ]; then
       choice=$normalized_default
@@ -229,7 +229,7 @@ prompt_on_off_choice() {
         return 0
         ;;
       *)
-        echo "Invalid selection. Choose 'on'/'off' or 1/0."
+        echo "Invalid selection. Choose on(1) or off(0)."
         ;;
     esac
   done
