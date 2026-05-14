@@ -5,7 +5,6 @@
 
 void SerialBLEInterface::onConnect(BLEServer* p) {
   (void)p;
-  Serial.println("BLE: connected");
   _isConnected = true;
   send_queue_len = 0;
   recv_queue_len = 0;
@@ -13,7 +12,6 @@ void SerialBLEInterface::onConnect(BLEServer* p) {
 
 void SerialBLEInterface::onDisconnect(BLEServer* p) {
   (void)p;
-  Serial.println("BLE: disconnected");
   _isConnected = false;
   send_queue_len = 0;
   recv_queue_len = 0;
@@ -25,7 +23,6 @@ void SerialBLEInterface::onDisconnect(BLEServer* p) {
 void SerialBLEInterface::onWrite(BLECharacteristic* c) {
   size_t len = c->valueLen();
   const uint8_t* data = (const uint8_t*)c->valueData();
-  Serial.printf("BLE: onWrite len=%d hdr=0x%02x\n", len, len > 0 ? data[0] : 0);
   if (len > 0 && len <= MAX_FRAME_SIZE && recv_queue_len < FRAME_QUEUE_SIZE) {
     recv_queue[recv_queue_len].len = len;
     memcpy(recv_queue[recv_queue_len].buf, data, len);
@@ -97,7 +94,6 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
   if (send_queue_len > 0 && _isConnected && millis() >= _last_write + BLE_WRITE_MIN_INTERVAL) {
     _last_write = millis();
     _txChar->setValue(send_queue[0].buf, send_queue[0].len);
-    Serial.printf("BLE: notify len=%d hdr=0x%02x\n", send_queue[0].len, send_queue[0].buf[0]);
     shiftSendQueueLeft();
   }
 
@@ -105,7 +101,6 @@ size_t SerialBLEInterface::checkRecvFrame(uint8_t dest[]) {
   if (recv_queue_len > 0) {
     size_t len = recv_queue[0].len;
     memcpy(dest, recv_queue[0].buf, len);
-    Serial.printf("BLE: recv frame len=%d hdr=0x%02x\n", len, dest[0]);
     shiftRecvQueueLeft();
     return len;
   }
