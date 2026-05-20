@@ -20,18 +20,23 @@
 // ---- Constants mirrored from BaseChatMesh.cpp --------------------------------
 #define OUT_PATH_UNKNOWN            0xFF
 #define PATH_STICKINESS_WINDOW_SECS 10u   // 10 seconds blanket first-arrived lock
+#define PATH_PROVEN_LOCK_SECS       300u  // 5 minutes for proven paths (ack_count > 0)
 
 // ---- Path-lock decision extracted as a pure function -----------------------
 // Must remain an exact transcription of the condition in onContactPathRecv.
 static bool shouldKeepStoredPath(
     uint32_t now,
     uint8_t  stored_path_len,
-    uint32_t stored_path_timestamp)
+    uint32_t stored_path_timestamp,
+    uint8_t  path_ack_count = 0)
 {
   if (stored_path_len == OUT_PATH_UNKNOWN) return false;
   if (stored_path_timestamp == 0)          return false;
   uint32_t age = now - stored_path_timestamp;
-  return age < PATH_STICKINESS_WINDOW_SECS;  // blanket lock — no hop comparison
+  uint32_t effective_window = (path_ack_count > 0)
+      ? PATH_PROVEN_LOCK_SECS
+      : PATH_STICKINESS_WINDOW_SECS;
+  return age < effective_window;
 }
 
 // =============================================================================
@@ -127,6 +132,48 @@ TEST(PathGating, ZeroTimestamp_AlwaysAcceptsNew) {
 
 TEST(PathGating, WindowIs10Seconds) {
   EXPECT_EQ(10u, PATH_STICKINESS_WINDOW_SECS);
+}
+
+// =============================================================================
+// Proven path (path_ack_count > 0) — 5-minute lock
+// Prevents a flood-triggered reciprocal PATH from silently overwriting a
+// working direct path when the remote node loses its own route back.
+// =============================================================================
+
+TEST(PathGating, ProvenPath_BlocksReplacement_Within5MinuteWindow) {
+  // path stored 200 s ago, proven — must still be locked (300 s window)
+  uint32_t now = 2000, ts = now - 200;
+  EXPECT_TRUE(shouldKeepStoredPath(now, 1, ts, /*ack_count=*/1));
+}
+
+TEST(PathGating, ProvenPath_BlocksReplacement_1SecondIntoWindow) {
+  uint32_t now = 1000, ts = now - 1;
+  EXPECT_TRUE(shouldKeepStoredPath(now, 1, ts, /*ack_count=*/3));
+}
+
+TEST(PathGating, ProvenPath_BlocksReplacement_JustInsideWindow) {
+  uint32_t now = 1000, ts = now - (PATH_PROVEN_LOCK_SECS - 1);  // 1 s before expiry
+  EXPECT_TRUE(shouldKeepStoredPath(now, 2, ts, /*ack_count=*/1));
+}
+
+TEST(PathGating, ProvenPath_ExpiresAtWindowBoundary) {
+  uint32_t now = 1000, ts = now - PATH_PROVEN_LOCK_SECS;  // age == 300 → expired
+  EXPECT_FALSE(shouldKeepStoredPath(now, 1, ts, /*ack_count=*/1));
+}
+
+TEST(PathGating, ProvenPath_ExpiredWellOutsideWindow) {
+  uint32_t now = 10000, ts = 1u;  // very old
+  EXPECT_FALSE(shouldKeepStoredPath(now, 1, ts, /*ack_count=*/5));
+}
+
+TEST(PathGating, UnprovenPath_ExpiresAfter10Seconds_EvenWithHighAckCount) {
+  // ack_count == 0 → use short window regardless
+  uint32_t now = 1000, ts = now - 15;  // age 15 s > 10 s window
+  EXPECT_FALSE(shouldKeepStoredPath(now, 1, ts, /*ack_count=*/0));
+}
+
+TEST(PathGating, ProvenPathWindowIs300Seconds) {
+  EXPECT_EQ(300u, PATH_PROVEN_LOCK_SECS);
 }
 
 

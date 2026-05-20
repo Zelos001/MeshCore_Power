@@ -21,6 +21,17 @@
   #define PATH_STICKINESS_WINDOW_SECS  10u
 #endif
 
+// Proven-path lock (seconds): if at least one direct-path ACK has been
+// received for the stored path (path_ack_count > 0), block replacement for
+// much longer.  This prevents a flood-triggered PATH exchange from silently
+// overwriting a working direct path when the remote node temporarily loses
+// its own route back (e.g. after a reboot).  5 minutes is long enough to
+// survive typical disruptions; the app can always call CMD_RESET_PATH if
+// needed.
+#ifndef PATH_PROVEN_LOCK_SECS
+  #define PATH_PROVEN_LOCK_SECS  300u
+#endif
+
 // Number of independent flood-ACK transmissions at increasing delays.
 // Addresses issue #1489 (single flood ACK lost in noisy RF environments).
 #ifndef FLOOD_ACK_RETRY_COUNT
@@ -345,7 +356,14 @@ bool BaseChatMesh::onContactPathRecv(ContactInfo& from, uint8_t* in_path, uint8_
   // The embedded ACK/response is always processed regardless of the lock.
   if (from.out_path_len != OUT_PATH_UNKNOWN && from.out_path_timestamp != 0) {
     uint32_t age_secs = now - from.out_path_timestamp;
-    if (age_secs < PATH_STICKINESS_WINDOW_SECS) {
+    // Proven paths (at least one direct-path ACK received) are locked for
+    // PATH_PROVEN_LOCK_SECS; unproven paths use the shorter blanket window.
+    // This stops a flood-triggered reciprocal PATH exchange from silently
+    // overwriting a working direct path when the remote node loses its route.
+    uint32_t effective_window = (from.path_ack_count > 0)
+        ? PATH_PROVEN_LOCK_SECS
+        : PATH_STICKINESS_WINDOW_SECS;
+    if (age_secs < effective_window) {
       // Path is still within the lock window — keep it, but still process any
       // embedded ACK or response so the sender's retry timer is cancelled.
       onContactPathUpdated(from);
