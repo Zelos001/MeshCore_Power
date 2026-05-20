@@ -8,11 +8,11 @@
 #define FIRMWARE_VER_CODE 11
 
 #ifndef FIRMWARE_BUILD_DATE
-#define FIRMWARE_BUILD_DATE "19 Apr 2026"
+#define FIRMWARE_BUILD_DATE "20 May 2026"
 #endif
 
 #ifndef FIRMWARE_VERSION
-#define FIRMWARE_VERSION "v1.15.0"
+#define FIRMWARE_VERSION "v1.15.0.SOS"
 #endif
 
 #if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
@@ -98,8 +98,8 @@ public:
   void loop();
   void handleCmdFrame(size_t len);
   bool advert();
+  bool sendSOS();
   void enterCLIRescue();
-
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
 
 protected:
