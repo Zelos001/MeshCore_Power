@@ -110,6 +110,12 @@ void halt() {
   while (1) ;
 }
 
+/* WIFI RECONNECT TRACKERS */
+#if defined(ESP32) && defined(WIFI_SSID)
+  bool wifi_needs_reconnect = false;
+  unsigned long last_wifi_reconnect_attempt = 0;
+#endif
+
 void setup() {
   Serial.begin(115200);
 
@@ -249,4 +255,14 @@ void loop() {
   #endif
   
   rtc_clock.tick();
+
+#if defined(ESP32) && defined(WIFI_SSID)
+  // Safely attempt to reconnect every 10 seconds if flagged
+  if (wifi_needs_reconnect && (millis() - last_wifi_reconnect_attempt > 10000)) {
+      WIFI_DEBUG_PRINTLN("Attempting manual WiFi reconnect...");
+      WiFi.disconnect();
+      WiFi.reconnect();
+      last_wifi_reconnect_attempt = millis();
+  }
+#endif
 }
