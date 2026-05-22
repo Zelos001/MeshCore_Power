@@ -132,6 +132,7 @@ struct NodePrefs { // persisted to file
   int8_t direct_retry_cr5_snr_x4;
   int8_t direct_retry_cr7_snr_x4;
   int8_t direct_retry_cr8_snr_x4;
+  uint8_t battery_alert_enabled;
 };
 
 class CommonCLICallbacks {

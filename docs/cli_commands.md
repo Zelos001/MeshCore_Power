@@ -126,6 +126,23 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 ---
 
+### View or change automatic low-battery alerts to `#repeaters`
+
+**Usage:**
+- `get battery.alert`
+- `set battery.alert <state>`
+
+**Parameters:**
+- `state`: `on` (enable) or `off` (disable)
+
+**Default:** `off`
+
+**Notes:**
+- When enabled, sends a `#repeaters` flood text warning if voltage is above `1 V` and the battery estimate is below `20%`.
+- Warnings repeat every `24` hours, or every `12` hours below `10%`.
+
+---
+
 ### Get or set recent repeater fallback prefix/SNR
 **Usage:**
 - `get recent.repeater`

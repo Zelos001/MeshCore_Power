@@ -85,6 +85,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint32_t last_millis;
   uint64_t uptime_millis;
   unsigned long next_local_advert, next_flood_advert;
+  unsigned long next_battery_alert_check;
+  unsigned long last_battery_alert_sent;
+  bool battery_alert_sent;
   bool _logging;
   NodePrefs _prefs;
   ClientACL  acl;
@@ -163,6 +166,8 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t handleAnonClockReq(const mesh::Identity& sender, uint32_t sender_timestamp, const uint8_t* data);
   int handleRequest(ClientInfo* sender, uint32_t sender_timestamp, uint8_t* payload, size_t payload_len);
   mesh::Packet* createSelfAdvert();
+  bool sendRepeatersFloodText(const char* text);
+  void checkBatteryAlert();
 
   File openAppend(const char* fname);
   bool isLooped(const mesh::Packet* packet, const uint8_t max_counters[]);

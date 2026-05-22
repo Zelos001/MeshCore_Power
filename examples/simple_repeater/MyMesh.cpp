@@ -66,6 +66,19 @@
 #ifndef REPEATERS_CHANNEL_KEY_HEX
   #define REPEATERS_CHANNEL_KEY_HEX "89db441e2814dccf0dbd2e8cc5f501a3"
 #endif
+#ifndef BATT_MIN_MILLIVOLTS
+  #define BATT_MIN_MILLIVOLTS 3000
+#endif
+#ifndef BATT_MAX_MILLIVOLTS
+  #define BATT_MAX_MILLIVOLTS 4200
+#endif
+
+#define LOW_BATTERY_MIN_VALID_MV       1000
+#define LOW_BATTERY_WARN_PERCENT       20
+#define LOW_BATTERY_CRITICAL_PERCENT   10
+#define LOW_BATTERY_CHECK_INTERVAL     (60UL * 1000UL)
+#define LOW_BATTERY_WARN_INTERVAL      (24UL * 60UL * 60UL * 1000UL)
+#define LOW_BATTERY_CRITICAL_INTERVAL  (12UL * 60UL * 60UL * 1000UL)
 
 static void formatRecentRepeaterPrefix(const SimpleMeshTables::RecentRepeaterInfo* info, char* out, size_t out_len) {
   if (out == NULL || out_len == 0) {
@@ -558,6 +571,17 @@ static bool buildRepeatersChannel(mesh::GroupChannel& channel) {
 
   mesh::Utils::sha256(channel.hash, sizeof(channel.hash), channel.secret, key_len);
   return true;
+}
+
+static uint8_t batteryPercentFromMilliVolts(uint16_t batt_mv) {
+  const int min_mv = BATT_MIN_MILLIVOLTS;
+  const int max_mv = BATT_MAX_MILLIVOLTS;
+  if (max_mv <= min_mv) return 100;
+
+  int pct = (((int)batt_mv - min_mv) * 100) / (max_mv - min_mv);
+  if (pct < 0) return 0;
+  if (pct > 100) return 100;
+  return (uint8_t)pct;
 }
 
 mesh::Packet* MyMesh::createPacketCopy(const mesh::Packet* packet, const char* caller) {
@@ -1970,6 +1994,9 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   last_millis = 0;
   uptime_millis = 0;
   next_local_advert = next_flood_advert = 0;
+  next_battery_alert_check = 0;
+  last_battery_alert_sent = 0;
+  battery_alert_sent = false;
   dirty_contacts_expiry = 0;
   set_radio_at = revert_radio_at = 0;
   _logging = false;
@@ -1996,6 +2023,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.flood_retry_path_gate = 2;
   _prefs.flood_retry_bridge_enabled = 0;
   _prefs.flood_retry_advert_enabled = 0;
+  _prefs.battery_alert_enabled = 0;
   _prefs.direct_retry_cr4_snr_x4 = DIRECT_RETRY_CR4_MIN_SNR_X4_DEFAULT;
   _prefs.direct_retry_cr5_snr_x4 = DIRECT_RETRY_CR5_MIN_SNR_X4_DEFAULT;
   _prefs.direct_retry_cr7_snr_x4 = DIRECT_RETRY_CR7_MIN_SNR_X4_DEFAULT;
@@ -2111,6 +2139,82 @@ void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint3
     codes[0] = scope.calcTransportCode(pkt);
     codes[1] = 0;  // REVISIT: set to 'home' Region, for sender/return region?
     sendFlood(pkt, codes, delay_millis, path_hash_size);
+  }
+}
+
+bool MyMesh::sendRepeatersFloodText(const char* text) {
+  if (text == NULL || *text == 0) return false;
+
+  mesh::GroupChannel channel;
+  if (!buildRepeatersChannel(channel)) {
+    return false;
+  }
+
+  uint8_t temp[MAX_PACKET_PAYLOAD];
+  uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
+  memcpy(temp, &timestamp, 4);
+  temp[4] = (TXT_TYPE_PLAIN << 2);
+
+  const size_t max_data_len = MAX_PACKET_PAYLOAD - CIPHER_BLOCK_SIZE;
+  const size_t prefix_cap = max_data_len > 5 ? max_data_len - 5 + 1 : 0;
+  int prefix_written = prefix_cap > 0
+      ? snprintf((char*)&temp[5], prefix_cap, "%s: ", _prefs.node_name)
+      : -1;
+  if (prefix_written < 0) {
+    return false;
+  }
+
+  size_t prefix_len = (size_t)prefix_written;
+  if (prefix_len >= prefix_cap) {
+    prefix_len = prefix_cap - 1;
+  }
+
+  size_t text_len = strlen(text);
+  size_t max_text_len = max_data_len - 5 - prefix_len;
+  if (text_len > max_text_len) {
+    text_len = max_text_len;
+  }
+  memcpy(&temp[5 + prefix_len], text, text_len);
+
+  auto pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, channel, temp, 5 + prefix_len + text_len);
+  if (pkt == NULL) {
+    return false;
+  }
+
+  sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
+  return true;
+}
+
+void MyMesh::checkBatteryAlert() {
+  if (!_prefs.battery_alert_enabled) {
+    battery_alert_sent = false;
+    return;
+  }
+
+  if (next_battery_alert_check && !millisHasNowPassed(next_battery_alert_check)) {
+    return;
+  }
+  next_battery_alert_check = futureMillis(LOW_BATTERY_CHECK_INTERVAL);
+
+  uint16_t batt_mv = board.getBattMilliVolts();
+  uint8_t batt_pct = batteryPercentFromMilliVolts(batt_mv);
+  if (batt_mv <= LOW_BATTERY_MIN_VALID_MV || batt_pct >= LOW_BATTERY_WARN_PERCENT) {
+    battery_alert_sent = false;
+    return;
+  }
+
+  unsigned long interval = batt_pct < LOW_BATTERY_CRITICAL_PERCENT
+      ? LOW_BATTERY_CRITICAL_INTERVAL
+      : LOW_BATTERY_WARN_INTERVAL;
+  if (battery_alert_sent && !millisHasNowPassed(last_battery_alert_sent + interval)) {
+    return;
+  }
+
+  char text[96];
+  snprintf(text, sizeof(text), "LOW BATTERY %u%% (%u mV)", (uint32_t)batt_pct, (uint32_t)batt_mv);
+  if (sendRepeatersFloodText(text)) {
+    battery_alert_sent = true;
+    last_battery_alert_sent = millis();
   }
 }
 
@@ -2519,45 +2623,27 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     char* text = trimSpaces(command + 16);
     if (*text == 0) {
       strcpy(reply, "Err - usage: send text.flood <message>");
+    } else if (sendRepeatersFloodText(text)) {
+      strcpy(reply, "OK");
     } else {
-      mesh::GroupChannel channel;
-      if (!buildRepeatersChannel(channel)) {
-        strcpy(reply, "Err - invalid #repeaters key");
-      } else {
-        uint8_t temp[MAX_PACKET_PAYLOAD];
-        uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
-        memcpy(temp, &timestamp, 4);
-        temp[4] = (TXT_TYPE_PLAIN << 2);
-
-        const size_t max_data_len = MAX_PACKET_PAYLOAD - CIPHER_BLOCK_SIZE;
-        const size_t prefix_cap = max_data_len > 5 ? max_data_len - 5 + 1 : 0;
-        int prefix_written = prefix_cap > 0
-            ? snprintf((char*)&temp[5], prefix_cap, "%s: ", _prefs.node_name)
-            : -1;
-        if (prefix_written < 0) {
-          strcpy(reply, "Err - unable to create message");
-        } else {
-          size_t prefix_len = (size_t)prefix_written;
-          if (prefix_len >= prefix_cap) {
-            prefix_len = prefix_cap - 1;
-          }
-
-          size_t text_len = strlen(text);
-          size_t max_text_len = max_data_len - 5 - prefix_len;
-          if (text_len > max_text_len) {
-            text_len = max_text_len;
-          }
-          memcpy(&temp[5 + prefix_len], text, text_len);
-
-          auto pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, channel, temp, 5 + prefix_len + text_len);
-          if (pkt) {
-            sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
-            strcpy(reply, "OK");
-          } else {
-            strcpy(reply, "Err - unable to create packet");
-          }
-        }
-      }
+      strcpy(reply, "Err - unable to create packet");
+    }
+  } else if (strcmp(command, "get battery.alert") == 0) {
+    sprintf(reply, "> %s", _prefs.battery_alert_enabled ? "on" : "off");
+  } else if (strncmp(command, "set battery.alert ", 18) == 0) {
+    const char* value = command + 18;
+    if (strcmp(value, "on") == 0) {
+      _prefs.battery_alert_enabled = 1;
+      next_battery_alert_check = 0;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else if (strcmp(value, "off") == 0) {
+      _prefs.battery_alert_enabled = 0;
+      battery_alert_sent = false;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Err - usage: set battery.alert <on|off>");
     }
   } else if (strncmp(command, "get recent.repeater", 19) == 0
           || strncmp(command, "set recent.repeater", 19) == 0
@@ -2759,6 +2845,7 @@ void MyMesh::loop() {
 #endif
 
   mesh::Mesh::loop();
+  checkBatteryAlert();
 
   if (next_flood_advert && millisHasNowPassed(next_flood_advert)) {
     mesh::Packet *pkt = createSelfAdvert();
