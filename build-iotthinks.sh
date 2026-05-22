@@ -1,5 +1,5 @@
 # sh ./build-repeaters-iotthinks.sh
-export FIRMWARE_VERSION="PowerSaving15.0.2"
+export FIRMWARE_VERSION="PowerSaving15.0.3"
 
 ############# Repeaters #############
 # Commonly-used boards
@@ -88,7 +88,7 @@ Heltec_t096_companion_radio_ble \
 Heltec_t096_companion_radio_ble_femoff
 
 ############# Companions BLE PS #############
-# ESP32 - 13 boards
+# ESP32 - 16 boards
 sh build.sh build-firmware \
 Heltec_v3_companion_radio_ble_ps \
 heltec_v4_companion_radio_ble_ps \
@@ -103,4 +103,11 @@ Heltec_Wireless_Tracker_companion_radio_ble_ps \
 heltec_tracker_v2_companion_radio_ble_ps \
 Heltec_Wireless_Paper_companion_radio_ble_ps \
 LilyGo_TLora_V2_1_1_6_companion_radio_ble_ps \
-Heltec_ct62_companion_radio_ble_ps
+Heltec_ct62_companion_radio_ble_ps \
+T_Beam_S3_Supreme_SX1262_companion_radio_ble_ps \
+Tbeam_SX1262_companion_radio_ble_ps \
+Tbeam_SX1276_companion_radio_ble_ps
+
+############# Companions USB #############
+sh build.sh build-firmware \
+Heltec_t096_companion_radio_usb
