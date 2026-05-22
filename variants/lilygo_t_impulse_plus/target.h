@@ -9,7 +9,7 @@
 #include <helpers/ArduinoHelpers.h>
 #include <helpers/sensors/EnvironmentSensorManager.h>
 #ifdef DISPLAY_CLASS
-  #include <helpers/ui/SSD1306Display.h>
+  #include <helpers/ui/SSD1315Display.h>
   #include <helpers/ui/MomentaryButton.h>
 #endif
 

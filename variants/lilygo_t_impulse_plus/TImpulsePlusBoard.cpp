@@ -29,8 +29,8 @@ void TImpulsePlusBoard::begin() {
   // configure user button
   pinMode(TTP223_KEY, INPUT_PULLDOWN);
 
-  #if defined(PIN_WIRE_SDA) && defined(PIN_WIRE_SCL)
-    Wire.setPins(PIN_WIRE_SDA, PIN_WIRE_SCL);
+  #if defined(SCREEN_SDA) && defined(SCREEN_SCL)
+    Wire.setPins(SCREEN_SDA, SCREEN_SCL);
   #endif
 
   Wire.begin();

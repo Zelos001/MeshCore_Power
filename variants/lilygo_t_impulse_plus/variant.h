@@ -94,6 +94,9 @@ extern "C"
 #define GPS_BAUD_RATE 38400
 #define PIN_GPS_EN_ACTIVE LOW
 
+// vibrate
+#define VIBRATION_MOTOR_DATA _PINNUM(0, 22)
+
 // Battery
 #define BATTERY_MEASUREMENT_CONTROL _PINNUM(0, 25)
 #define BATTERY_ADC_DATA _PINNUM(0, 5)
@@ -186,11 +189,11 @@ static const uint8_t SCK  = PIN_SPI_SCK ;
  */
 #define WIRE_INTERFACES_COUNT 2
 
-#define PIN_WIRE_SDA         (26)
-#define PIN_WIRE_SCL         (27)
+#define PIN_WIRE_SDA         _PINNUM(0, 20)
+#define PIN_WIRE_SCL         _PINNUM(0, 15)
 
-#define PIN_WIRE1_SDA         (26)
-#define PIN_WIRE1_SCL         (27)
+#define PIN_WIRE1_SDA         _PINNUM(1, 8)
+#define PIN_WIRE1_SCL         _PINNUM(0, 11)
 
 // ZD25WQ32CEIGR SPI
 #define ZD25WQ32C_CS _PINNUM(0, 12)
