@@ -88,7 +88,8 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     file.read((uint8_t *)&_prefs->adc_multiplier, sizeof(_prefs->adc_multiplier));                 // 166
     file.read((uint8_t *)_prefs->owner_info, sizeof(_prefs->owner_info));                          // 170
     file.read((uint8_t *)&_prefs->rx_boosted_gain, sizeof(_prefs->rx_boosted_gain));              // 290
-    // next: 291
+    file.read((uint8_t *)&_prefs->gps_blur_digits, sizeof(_prefs->gps_blur_digits));             // 291
+    // next: 292
 
     // sanitise bad pref values
     _prefs->rx_delay_base = constrain(_prefs->rx_delay_base, 0, 20.0f);
@@ -118,6 +119,9 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
 
     // sanitise settings
     _prefs->rx_boosted_gain = constrain(_prefs->rx_boosted_gain, 0, 1); // boolean
+    _prefs->gps_blur_digits = constrain(_prefs->gps_blur_digits, 0, 6);
+
+    _sensors->gps_blur_digits = _prefs->gps_blur_digits;
 
     file.close();
   }
@@ -179,7 +183,8 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->adc_multiplier, sizeof(_prefs->adc_multiplier));                 // 166
     file.write((uint8_t *)_prefs->owner_info, sizeof(_prefs->owner_info));                          // 170
     file.write((uint8_t *)&_prefs->rx_boosted_gain, sizeof(_prefs->rx_boosted_gain));              // 290
-    // next: 291
+    file.write((uint8_t *)&_prefs->gps_blur_digits, sizeof(_prefs->gps_blur_digits));             // 291
+    // next: 292
 
     file.close();
   }
@@ -194,15 +199,26 @@ void CommonCLI::savePrefs() {
   _callbacks->savePrefs();
 }
 
+static void applyGpsBlur(double& lat, double& lon, uint8_t digits) {
+  if (digits == 0 || digits > 6) return;
+  long q = 1;
+  for (uint8_t i = 0; i < 6 - digits; i++) q *= 10;
+  lat = (double)(((long)(lat * 1000000.0) / q) * q) / 1000000.0;
+  lon = (double)(((long)(lon * 1000000.0) / q) * q) / 1000000.0;
+}
+
 uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
   if (_prefs->advert_loc_policy == ADVERT_LOC_NONE) {
     AdvertDataBuilder builder(node_type, _prefs->node_name);
     return builder.encodeTo(app_data);
   } else if (_prefs->advert_loc_policy == ADVERT_LOC_SHARE) {
+    // node_lat/lon already blurred by EnvironmentSensorManager
     AdvertDataBuilder builder(node_type, _prefs->node_name, _sensors->node_lat, _sensors->node_lon);
     return builder.encodeTo(app_data);
   } else {
-    AdvertDataBuilder builder(node_type, _prefs->node_name, _prefs->node_lat, _prefs->node_lon);
+    double lat = _prefs->node_lat, lon = _prefs->node_lon;
+    applyGpsBlur(lat, lon, _prefs->gps_blur_digits);
+    AdvertDataBuilder builder(node_type, _prefs->node_name, lat, lon);
     return builder.encodeTo(app_data);
   }
 }
@@ -376,6 +392,24 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       _prefs->node_lon = _sensors->node_lon;
       savePrefs();
       strcpy(reply, "ok");
+    } else if (memcmp(command, "gps blur", 8) == 0) {
+      if (strlen(command) == 8) {
+        if (_prefs->gps_blur_digits == 0) {
+          strcpy(reply, "> off");
+        } else {
+          sprintf(reply, "> %d", _prefs->gps_blur_digits);
+        }
+      } else {
+        uint8_t digits = atoi(command + 9);
+        if (digits <= 6) {
+          _prefs->gps_blur_digits = digits;
+          _sensors->gps_blur_digits = digits;
+          savePrefs();
+          strcpy(reply, "ok");
+        } else {
+          strcpy(reply, "error: value must be 0-6");
+        }
+      }
     } else if (memcmp(command, "gps advert", 10) == 0) {
       if (strlen(command) == 10) {
         switch (_prefs->advert_loc_policy) {

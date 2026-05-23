@@ -61,6 +61,7 @@ struct NodePrefs { // persisted to file
   uint8_t rx_boosted_gain; // power settings
   uint8_t path_hash_mode;   // which path mode to use when sending
   uint8_t loop_detect;
+  uint8_t gps_blur_digits; // 0=off, 1-6: broadcast GPS coords rounded to N decimal places (~111km/11km/1.1km/111m/11m/1m)
 };
 
 class CommonCLICallbacks {

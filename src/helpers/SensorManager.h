@@ -13,8 +13,9 @@ class SensorManager {
 public:
   double node_lat, node_lon;  // modify these, if you want to affect Advert location
   double node_altitude;       // altitude in meters
+  uint8_t gps_blur_digits = 0; // 0=off, 1-6: snap GPS coords to this many decimal places before publishing
 
-  SensorManager() { node_lat = 0; node_lon = 0; node_altitude = 0; }
+  SensorManager() { node_lat = 0; node_lon = 0; node_altitude = 0; gps_blur_digits = 0; }
   virtual bool begin() { return false; }
   virtual bool querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) { return false; }
   virtual void loop() { }
