@@ -203,7 +203,7 @@ bool EnvironmentSensorManager::begin() {
 
   #if ENV_INCLUDE_BME280
   {
-    static const uint8_t bme280_addrs[] = { TELEM_BME280_ADDRESS, 0x76, 0x77 };
+    static const uint8_t bme280_addrs[] = { TELEM_BME280_ADDRESS, 0x77, 0x76 };
     for (uint8_t addr : bme280_addrs) {
       if (BME280.begin(addr, TELEM_WIRE)) {
         MESH_DEBUG_PRINTLN("Found BME280 at address: %02X", addr);
