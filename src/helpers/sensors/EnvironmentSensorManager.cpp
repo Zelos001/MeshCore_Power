@@ -202,20 +202,25 @@ bool EnvironmentSensorManager::begin() {
   #endif
 
   #if ENV_INCLUDE_BME280
-  if (BME280.begin(TELEM_BME280_ADDRESS, TELEM_WIRE)) {
-    MESH_DEBUG_PRINTLN("Found BME280 at address: %02X", TELEM_BME280_ADDRESS);
-    MESH_DEBUG_PRINTLN("BME sensor ID: %02X", BME280.sensorID());
-    // Reduce self-heating: single-shot conversions, light oversampling, long standby.
-    BME280.setSampling(Adafruit_BME280::MODE_FORCED,
-                       Adafruit_BME280::SAMPLING_X1,   // temperature
-                       Adafruit_BME280::SAMPLING_X1,   // pressure
-                       Adafruit_BME280::SAMPLING_X1,   // humidity
-                       Adafruit_BME280::FILTER_OFF,
-                       Adafruit_BME280::STANDBY_MS_1000);
-    BME280_initialized = true;
-  } else {
-    BME280_initialized = false;
-    MESH_DEBUG_PRINTLN("BME280 was not found at I2C address %02X", TELEM_BME280_ADDRESS);
+  {
+    static const uint8_t bme280_addrs[] = { TELEM_BME280_ADDRESS, 0x76, 0x77 };
+    for (uint8_t addr : bme280_addrs) {
+      if (BME280.begin(addr, TELEM_WIRE)) {
+        MESH_DEBUG_PRINTLN("Found BME280 at address: %02X", addr);
+        MESH_DEBUG_PRINTLN("BME sensor ID: %02X", BME280.sensorID());
+        BME280.setSampling(Adafruit_BME280::MODE_FORCED,
+                           Adafruit_BME280::SAMPLING_X1,
+                           Adafruit_BME280::SAMPLING_X1,
+                           Adafruit_BME280::SAMPLING_X1,
+                           Adafruit_BME280::FILTER_OFF,
+                           Adafruit_BME280::STANDBY_MS_1000);
+        BME280_initialized = true;
+        break;
+      }
+    }
+    if (!BME280_initialized) {
+      MESH_DEBUG_PRINTLN("BME280 not found at 0x76 or 0x77");
+    }
   }
   #endif
 
