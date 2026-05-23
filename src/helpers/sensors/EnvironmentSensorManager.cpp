@@ -754,11 +754,11 @@ void EnvironmentSensorManager::stop_gps() {
   #endif
 }
 
-static double blurCoord(long microdeg, uint8_t digits) {
+static double blurCoord(long microdeg, uint8_t digits, uint32_t fuzz) {
   if (digits == 0 || digits > 6) return microdeg / 1000000.0;
-  long q = 1;
-  for (uint8_t i = 0; i < 6 - digits; i++) q *= 10;
-  return (double)((microdeg / q) * q) / 1000000.0;
+  long grid = 1;
+  for (uint8_t i = 0; i < 6 - digits; i++) grid *= 10;
+  return (double)(((microdeg / grid) * grid) + (long)(fuzz % (uint32_t)grid) - grid / 2) / 1000000.0;
 }
 
 void EnvironmentSensorManager::loop() {
@@ -773,15 +773,15 @@ void EnvironmentSensorManager::loop() {
     if(gps_active){
     #ifdef RAK_WISBLOCK_GPS
     if ((i2cGPSFlag || serialGPSFlag) && _location->isValid()) {
-      node_lat = blurCoord(_location->getLatitude(), gps_blur_digits);
-      node_lon = blurCoord(_location->getLongitude(), gps_blur_digits);
+      node_lat = blurCoord(_location->getLatitude(), gps_blur_digits, gps_fuzz_lat);
+      node_lon = blurCoord(_location->getLongitude(), gps_blur_digits, gps_fuzz_lon);
       node_altitude = ((double)_location->getAltitude()) / 1000.0;
       MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
     }
     #else
     if (_location->isValid()) {
-      node_lat = blurCoord(_location->getLatitude(), gps_blur_digits);
-      node_lon = blurCoord(_location->getLongitude(), gps_blur_digits);
+      node_lat = blurCoord(_location->getLatitude(), gps_blur_digits, gps_fuzz_lat);
+      node_lon = blurCoord(_location->getLongitude(), gps_blur_digits, gps_fuzz_lon);
       node_altitude = ((double)_location->getAltitude()) / 1000.0;
       MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
     }
