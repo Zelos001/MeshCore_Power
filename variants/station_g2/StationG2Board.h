@@ -4,8 +4,6 @@
 #include <helpers/ESP32Board.h>
 #include <driver/rtc_io.h>
 
-#define ENV_SKIP_GPS_DETECT
-
 class StationG2Board : public ESP32Board {
 public:
   void begin() {
