@@ -637,7 +637,7 @@ void Mesh::sendFlood(Packet* packet, uint32_t delay_millis, uint8_t path_hash_si
   if (packet->getPayloadType() == PAYLOAD_TYPE_PATH) {
     pri = 2;
   } else if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT) {
-    pri = 3;   // de-prioritie these
+    pri = 3;   // de-prioritize these
   } else {
     pri = 1;
   }
@@ -666,7 +666,7 @@ void Mesh::sendFlood(Packet* packet, uint16_t* transport_codes, uint32_t delay_m
   if (packet->getPayloadType() == PAYLOAD_TYPE_PATH) {
     pri = 2;
   } else if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT) {
-    pri = 3;   // de-prioritie these
+    pri = 3;   // de-prioritize these
   } else {
     pri = 1;
   }

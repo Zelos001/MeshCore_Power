@@ -40,7 +40,7 @@ class UITask : public AbstractUITask {
   char _alert[80];
   unsigned long _alert_expiry;
   int _msgcount;
-  unsigned long ui_started_at, next_batt_chck;
+  unsigned long ui_started_at, next_batt_check;
   int next_backlight_btn_check = 0;
   uint16_t _cached_batt_mv;
 #ifdef PIN_STATUS_LED
@@ -72,7 +72,7 @@ class UITask : public AbstractUITask {
 public:
 
   UITask(mesh::MainBoard* board, BaseSerialInterface* serial) : AbstractUITask(board, serial), _display(NULL), _sensors(NULL) {
-    next_batt_chck = _next_refresh = 0;
+    next_batt_check = _next_refresh = 0;
     _cached_batt_mv = 0;
     ui_started_at = 0;
     curr = NULL;

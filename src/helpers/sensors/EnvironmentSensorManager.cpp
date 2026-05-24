@@ -675,7 +675,7 @@ void EnvironmentSensorManager::initBasicGPS() {
 
   if (gps_detected) {
     MESH_DEBUG_PRINTLN("GPS detected");
-    #ifdef PERSISTANT_GPS
+    #ifdef PERSISTENT_GPS
       gps_active = true;
       return;
     #endif
@@ -686,7 +686,7 @@ void EnvironmentSensorManager::initBasicGPS() {
   gps_active = false; //Set GPS visibility off until setting is changed
 }
 
-// gps code for rak might be moved to MicroNMEALoactionProvider
+// gps code for rak might be moved to MicroNMEALocationProvider
 // or make a new location provider ...
 #ifdef RAK_WISBLOCK_GPS
 void EnvironmentSensorManager::rakGPSInit(){
@@ -714,7 +714,7 @@ void EnvironmentSensorManager::rakGPSInit(){
     return;
   }
 
-  #ifndef FORCE_GPS_ALIVE // for use with repeaters, until GPS toggle is implimented
+  #ifndef FORCE_GPS_ALIVE // for use with repeaters, until GPS toggle is implemented
   //Now that GPS is found and set up, set to sleep for initial state
   stop_gps();
   #endif

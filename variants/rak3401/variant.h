@@ -181,7 +181,7 @@ static const uint8_t AREF = PIN_AREF;
 #define WB_IO2 PIN_3V3_EN
 
 // RAK1910 GPS module
-// If using the wisblock GPS module and pluged into Port A on WisBlock base
+// If using the wisblock GPS module and plugged into Port A on WisBlock base
 // IO1 is hooked to PPS (pin 12 on header) = gpio 17
 // IO2 is hooked to GPS RESET = gpio 34, but it can not be used to this because IO2 is ALSO used to control 3V3_S power (1 is on).
 // Therefore must be 1 to keep peripherals powered

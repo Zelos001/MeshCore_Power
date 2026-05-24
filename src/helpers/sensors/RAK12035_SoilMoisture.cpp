@@ -118,14 +118,14 @@ bool RAK12035_SoilMoisture::begin(uint8_t addr)
  *  4) Click refresh several times.  This will take a capacitance reading and if it is
  *     greater than the current Dry value it will store it in the sensor
  *     The value will bounce a little as you click refresh, but it eventually settles down (a few clicks)
- *     the stored value will stabalize at it's Maximum value.
+ *     the stored value will stabilize at it's Maximum value.
  * 
  * 5) Put the sensor in water.  
  * 
  * 6) Click refresh several times.  This will take a capacitance reading and if it is
  *     less than the current Wet value it will store it in the sensor
  *     The value will bounce a little as you click refresh, but it eventually settles down (a few clicks)
- *     the stored value will stabalize at it's Minimum value.
+ *     the stored value will stabilize at it's Minimum value.
  * 
  * 7) The Sensor is now calibrated, turn off the device.
  * 
@@ -242,7 +242,7 @@ bool RAK12035_SoilMoisture::sensor_sleep()                          //Command 06
 // Optional: turn off sensor power AFTER successful sleep command
 
 // This has been commented out due to a pin name conflict with the Heltec v3
-// This will need to be resolved if this funstion is to be utilized in the future
+// This will need to be resolved if this function is to be utilized in the future
 /*
     digitalWrite(WB_IO2, LOW);
 */
@@ -417,7 +417,7 @@ bool RAK12035_SoilMoisture::sensor_on()
 {
     uint8_t data;
  // This has been commented out due to a pin name conflict with the Heltec v3
- // This will need to be resolved if this funstion is to be utilized in the future
+ // This will need to be resolved if this function is to be utilized in the future
 
 /*
     pinMode(WB_IO2, OUTPUT);
@@ -460,7 +460,7 @@ bool RAK12035_SoilMoisture::reset()
 //  But might be needed if power is ever switched off.  Here is tested code.
 
 // This has been commented out due to a pin name conflict with the Heltec v3
-// This will need to be resolved if this funstion is to be utilized in the future
+// This will need to be resolved if this function is to be utilized in the future
 
 /*
     pinMode(WB_IO4, OUTPUT);        //Set IO4 Pin to Output (connected to *reset on sensor)

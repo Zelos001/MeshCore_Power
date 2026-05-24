@@ -715,19 +715,19 @@ void UITask::loop() {
 #endif
 
 #ifdef AUTO_SHUTDOWN_MILLIVOLTS
-  if (millis() > next_batt_chck) {
+  if (millis() > next_batt_check) {
     _cached_batt_mv = getBattMilliVolts();
     if (_cached_batt_mv > 0 && _cached_batt_mv < AUTO_SHUTDOWN_MILLIVOLTS) {
 
       shutdown();
 
     }
-    next_batt_chck = millis() + 8000;
+    next_batt_check = millis() + 8000;
   }
 #else
-  if (_display != NULL && _display->isOn() && millis >= next_batt_chck) {
+  if (_display != NULL && _display->isOn() && millis >= next_batt_check) {
     _cached_batt_mv = getBattMilliVolts();
-    next_batt_chck = millis() + 8000;
+    next_batt_check = millis() + 8000;
   }
 #endif
 }
