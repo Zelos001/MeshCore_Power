@@ -4,6 +4,10 @@
 #include "RadioLibWrappers.h"
 #include "SX126xReset.h"
 
+#ifndef USE_LLCC68
+#define USE_LLCC68
+#endif
+
 class CustomLLCC68Wrapper : public RadioLibWrapper {
 public:
   CustomLLCC68Wrapper(CustomLLCC68& radio, mesh::MainBoard& board) : RadioLibWrapper(radio, board) { }
