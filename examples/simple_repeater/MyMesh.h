@@ -165,6 +165,25 @@ protected:
 
   bool filterRecvFloodPacket(mesh::Packet* pkt) override;
 
+#if defined(ESP_PLATFORM) && defined(WIFI_PROVISIONING)
+  // Decoded-chat support: store group-channel PSKs so the repeater can decrypt
+  // public/hashtag-channel GRP_TXT frames it observes.
+  static constexpr int MAX_CHAT_CHANS = 8;
+  int _num_chat_chans = 0;
+  mesh::GroupChannel _chat_chans[MAX_CHAT_CHANS];
+  char _chat_chan_names[MAX_CHAT_CHANS][24];
+  int searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) override;
+  void onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel& channel, uint8_t* data, size_t len) override;
+
+  // Name-pattern blacklist: drop ADVERTs whose advertised name matches any pattern.
+  // Patterns are simple globs ('*' and '?'). Persisted in NVS namespace mc-block.
+  static constexpr int MAX_BLOCK_PATTERNS = 8;
+  char _block_patterns[MAX_BLOCK_PATTERNS][32];
+  uint32_t _block_hits[MAX_BLOCK_PATTERNS] = {0};
+  int _num_block_patterns = 0;
+  int _matchesBlockPattern(const char* name);   // returns pattern idx or -1
+#endif
+
   void onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
   int searchPeersByHash(const uint8_t* hash) override;
   void getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) override;
@@ -187,6 +206,19 @@ public:
   NodePrefs* getNodePrefs() {
     return &_prefs;
   }
+
+#if defined(ESP_PLATFORM) && defined(WIFI_PROVISIONING)
+  bool addChatChannel(const char* name, const char* psk_base64);
+  bool addPersistentChatChannel(const char* name, const char* psk_base64);
+  void listChatChannels(char* out, size_t out_size);
+  void loadPersistentChatChannels();
+
+  // Name-pattern blacklist API (user-facing).
+  bool addBlockPattern(const char* pattern);
+  bool removeBlockPattern(const char* pattern);
+  void listBlockPatterns(char* out, size_t out_size);   // "pat|hits\n" lines
+  void loadBlockPatterns();
+#endif
 
   void savePrefs() override {
     _cli.savePrefs(_fs);

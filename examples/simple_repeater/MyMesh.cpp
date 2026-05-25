@@ -1,6 +1,14 @@
 #include "MyMesh.h"
 #include <algorithm>
 
+#if defined(ESP_PLATFORM) && defined(WIFI_PROVISIONING)
+  #include <base64.hpp>
+  #include <Preferences.h>
+  // Well-known PSK for MeshCore's default "Public" group channel.
+  // Sourced from companion_radio/MyMesh.cpp.
+  #define REPEATER_PUBLIC_GROUP_PSK "izOH6cXN6mrJ5e26oRXNcg=="
+#endif
+
 /* ------------------------------ Config -------------------------------- */
 
 #ifndef LORA_FREQ
@@ -428,6 +436,25 @@ void MyMesh::sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, ui
 
 bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   if (_prefs.disable_fwd) return false;
+
+#if defined(ESP_PLATFORM) && defined(WIFI_PROVISIONING)
+  // Drop ADVERTs from blacklisted node names.
+  if (_num_block_patterns > 0 && packet->getPayloadType() == PAYLOAD_TYPE_ADVERT) {
+    const int app_off = PUB_KEY_SIZE + 4 + SIGNATURE_SIZE;
+    if (packet->payload_len > app_off) {
+      AdvertDataParser ap(&packet->payload[app_off], packet->payload_len - app_off);
+      if (ap.isValid() && ap.hasName()) {
+        int hit = _matchesBlockPattern(ap.getName());
+        if (hit >= 0) {
+          _block_hits[hit]++;
+          MESH_DEBUG_PRINTLN("blacklist: dropping ADVERT from '%s' (pattern '%s')", ap.getName(), _block_patterns[hit]);
+          return false;
+        }
+      }
+    }
+  }
+#endif
+
   if (packet->isRouteFlood() && packet->getPathHashCount() >= _prefs.flood_max) return false;
   if (packet->isRouteFlood() && recv_pkt_region == NULL) {
     MESH_DEBUG_PRINTLN("allowPacketForward: unknown transport code, or wildcard not allowed for FLOOD packet");
@@ -466,6 +493,14 @@ void MyMesh::logRxRaw(float snr, float rssi, const uint8_t raw[], int len) {
   mesh::Utils::printHex(Serial, raw, len);
   Serial.println();
 #endif
+#if defined(ESP_PLATFORM) && defined(WIFI_PROVISIONING)
+  extern void wifiAdminPushRxPacket(float snr, float rssi, const uint8_t* raw, int len);
+  wifiAdminPushRxPacket(snr, rssi, raw, len);
+#endif
+#if defined(ESP_PLATFORM) && defined(MQTT_PUBLISHER)
+  extern void mqttPublishRawPacket(float snr, float rssi, const uint8_t* raw, int len);
+  mqttPublishRawPacket(snr, rssi, raw, len);
+#endif
 }
 
 void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
@@ -498,6 +533,23 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
 #ifdef WITH_BRIDGE
   if (_prefs.bridge_pkt_src == 0) {
     bridge.sendPacket(pkt);
+  }
+#endif
+
+#if (defined(ESP_PLATFORM) && (defined(MQTT_PUBLISHER) || defined(WIFI_PROVISIONING)))
+  {
+    uint8_t buf[256];
+    uint8_t wire_len = pkt->writeTo(buf);
+    if (wire_len > 0) {
+      #if defined(WIFI_PROVISIONING)
+      extern void wifiAdminPushTxPacket(const uint8_t* raw, int len);
+      wifiAdminPushTxPacket(buf, wire_len);
+      #endif
+      #if defined(MQTT_PUBLISHER)
+      extern void mqttPublishTxPacket(const uint8_t* raw, int len);
+      mqttPublishTxPacket(buf, wire_len);
+      #endif
+    }
   }
 #endif
 
@@ -632,6 +684,16 @@ static bool isShare(const mesh::Packet *packet) {
 
 void MyMesh::onAdvertRecv(mesh::Packet *packet, const mesh::Identity &id, uint32_t timestamp,
                           const uint8_t *app_data, size_t app_data_len) {
+#if defined(ESP_PLATFORM) && defined(WIFI_PROVISIONING)
+  // If this advert matches the blacklist, skip neighbour-table insertion entirely.
+  // allowPacketForward will also drop the forwarding side; this prevents stats churn.
+  if (_num_block_patterns > 0) {
+    AdvertDataParser ap(app_data, app_data_len);
+    if (ap.isValid() && ap.hasName() && _matchesBlockPattern(ap.getName()) >= 0) {
+      return;
+    }
+  }
+#endif
   mesh::Mesh::onAdvertRecv(packet, id, timestamp, app_data, app_data_len); // chain to super impl
 
   // if this a zero hop advert (and not via 'Share'), add it to neighbours
@@ -918,6 +980,221 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   memset(default_scope.key, 0, sizeof(default_scope.key));
 }
 
+#if defined(ESP_PLATFORM) && defined(WIFI_PROVISIONING)
+namespace {
+  // Stash the base64 PSK alongside the in-memory channel so we can re-serialize
+  // user-added channels back to NVS without round-tripping bytes through base64.
+  // Kept as a parallel static array to avoid changing GroupChannel's footprint.
+  char _chat_chan_psks[8][48];   // 8 == MAX_CHAT_CHANS
+  bool _chat_chan_persistent[8] = {false};   // true for user-added (NVS-stored)
+}
+
+bool MyMesh::addChatChannel(const char* name, const char* psk_base64) {
+  if (_num_chat_chans >= MAX_CHAT_CHANS) return false;
+  // Reject duplicate names so the table stays sane after repeated saves.
+  for (int i = 0; i < _num_chat_chans; i++) {
+    if (strcmp(_chat_chan_names[i], name) == 0) return false;
+  }
+  mesh::GroupChannel& ch = _chat_chans[_num_chat_chans];
+  memset(ch.secret, 0, sizeof(ch.secret));
+  int len = decode_base64((unsigned char*)psk_base64, strlen(psk_base64), ch.secret);
+  if (len != 16 && len != 32) return false;
+  mesh::Utils::sha256(ch.hash, sizeof(ch.hash), ch.secret, len);
+  strncpy(_chat_chan_names[_num_chat_chans], name, sizeof(_chat_chan_names[0]) - 1);
+  _chat_chan_names[_num_chat_chans][sizeof(_chat_chan_names[0]) - 1] = 0;
+  strncpy(_chat_chan_psks[_num_chat_chans], psk_base64, sizeof(_chat_chan_psks[0]) - 1);
+  _chat_chan_psks[_num_chat_chans][sizeof(_chat_chan_psks[0]) - 1] = 0;
+  _chat_chan_persistent[_num_chat_chans] = false;
+  _num_chat_chans++;
+  return true;
+}
+
+void MyMesh::loadPersistentChatChannels() {
+  Preferences p;
+  p.begin("mc-chans", true);
+  String blob = p.getString("list", "");
+  p.end();
+  // Format: "name1|psk1\nname2|psk2\n..."
+  int start = 0;
+  while (start < (int)blob.length() && _num_chat_chans < MAX_CHAT_CHANS) {
+    int nl = blob.indexOf('\n', start);
+    if (nl < 0) nl = blob.length();
+    int bar = blob.indexOf('|', start);
+    if (bar > start && bar < nl) {
+      String name = blob.substring(start, bar);
+      String psk  = blob.substring(bar + 1, nl);
+      if (addChatChannel(name.c_str(), psk.c_str())) {
+        _chat_chan_persistent[_num_chat_chans - 1] = true;
+      }
+    }
+    start = nl + 1;
+  }
+}
+
+bool MyMesh::addPersistentChatChannel(const char* name, const char* psk_base64) {
+  if (!addChatChannel(name, psk_base64)) return false;
+  _chat_chan_persistent[_num_chat_chans - 1] = true;
+  // Re-serialize all persistent channels.
+  String blob;
+  for (int i = 0; i < _num_chat_chans; i++) {
+    if (!_chat_chan_persistent[i]) continue;
+    blob += _chat_chan_names[i]; blob += '|'; blob += _chat_chan_psks[i]; blob += '\n';
+  }
+  Preferences p;
+  p.begin("mc-chans", false);
+  p.putString("list", blob);
+  p.end();
+  return true;
+}
+
+namespace {
+// Simple glob matcher: '*' matches any run of chars, '?' matches any single char.
+bool _wildMatch(const char* pat, const char* s) {
+  if (!*pat) return !*s;
+  if (*pat == '*') {
+    while (*pat == '*') pat++;
+    if (!*pat) return true;
+    while (*s) {
+      if (_wildMatch(pat, s)) return true;
+      s++;
+    }
+    return false;
+  }
+  if (!*s) return false;
+  if (*pat == '?' || *pat == *s) return _wildMatch(pat + 1, s + 1);
+  return false;
+}
+}
+
+int MyMesh::_matchesBlockPattern(const char* name) {
+  if (!name || !*name) return -1;
+  for (int i = 0; i < _num_block_patterns; i++) {
+    if (_wildMatch(_block_patterns[i], name)) return i;
+  }
+  return -1;
+}
+
+bool MyMesh::addBlockPattern(const char* pattern) {
+  if (!pattern || !*pattern) return false;
+  if (_num_block_patterns >= MAX_BLOCK_PATTERNS) return false;
+  for (int i = 0; i < _num_block_patterns; i++) {
+    if (strcmp(_block_patterns[i], pattern) == 0) return false;   // duplicate
+  }
+  strncpy(_block_patterns[_num_block_patterns], pattern, sizeof(_block_patterns[0]) - 1);
+  _block_patterns[_num_block_patterns][sizeof(_block_patterns[0]) - 1] = 0;
+  _block_hits[_num_block_patterns] = 0;
+  _num_block_patterns++;
+  // Re-serialize to NVS.
+  String blob;
+  for (int i = 0; i < _num_block_patterns; i++) { blob += _block_patterns[i]; blob += '\n'; }
+  Preferences p; p.begin("mc-block", false); p.putString("list", blob); p.end();
+  return true;
+}
+
+bool MyMesh::removeBlockPattern(const char* pattern) {
+  if (!pattern) return false;
+  for (int i = 0; i < _num_block_patterns; i++) {
+    if (strcmp(_block_patterns[i], pattern) == 0) {
+      for (int j = i; j < _num_block_patterns - 1; j++) {
+        memcpy(_block_patterns[j], _block_patterns[j + 1], sizeof(_block_patterns[0]));
+        _block_hits[j] = _block_hits[j + 1];
+      }
+      _num_block_patterns--;
+      String blob;
+      for (int k = 0; k < _num_block_patterns; k++) { blob += _block_patterns[k]; blob += '\n'; }
+      Preferences p; p.begin("mc-block", false); p.putString("list", blob); p.end();
+      return true;
+    }
+  }
+  return false;
+}
+
+void MyMesh::loadBlockPatterns() {
+  Preferences p; p.begin("mc-block", true);
+  String blob = p.getString("list", "");
+  p.end();
+  int start = 0;
+  while (start < (int)blob.length() && _num_block_patterns < MAX_BLOCK_PATTERNS) {
+    int nl = blob.indexOf('\n', start);
+    if (nl < 0) nl = blob.length();
+    if (nl > start) {
+      String pat = blob.substring(start, nl);
+      strncpy(_block_patterns[_num_block_patterns], pat.c_str(), sizeof(_block_patterns[0]) - 1);
+      _block_patterns[_num_block_patterns][sizeof(_block_patterns[0]) - 1] = 0;
+      _block_hits[_num_block_patterns] = 0;
+      _num_block_patterns++;
+    }
+    start = nl + 1;
+  }
+}
+
+void MyMesh::listBlockPatterns(char* out, size_t out_size) {
+  char* dp = out; size_t remain = out_size;
+  for (int i = 0; i < _num_block_patterns && remain > 16; i++) {
+    int n = snprintf(dp, remain, "%s|%u\n", _block_patterns[i], (unsigned)_block_hits[i]);
+    if (n <= 0 || (size_t)n >= remain) break;
+    dp += n; remain -= n;
+  }
+  *dp = 0;
+}
+
+void MyMesh::listChatChannels(char* out, size_t out_size) {
+  char* dp = out;
+  size_t remain = out_size;
+  for (int i = 0; i < _num_chat_chans && remain > 16; i++) {
+    int n = snprintf(dp, remain, "%s|%02x|%c\n",
+                     _chat_chan_names[i],
+                     (unsigned)_chat_chans[i].hash[0],
+                     _chat_chan_persistent[i] ? 'p' : 'b');
+    if (n <= 0 || (size_t)n >= remain) break;
+    dp += n; remain -= n;
+  }
+  *dp = 0;
+}
+
+int MyMesh::searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) {
+  int n = 0;
+  for (int i = 0; i < _num_chat_chans && n < max_matches; i++) {
+    if (memcmp(_chat_chans[i].hash, hash, PATH_HASH_SIZE) == 0) {
+      channels[n++] = _chat_chans[i];
+    }
+  }
+  return n;
+}
+
+void MyMesh::onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel& channel, uint8_t* data, size_t len) {
+  if (type != PAYLOAD_TYPE_GRP_TXT || len < 5) return;
+  uint8_t txt_type = data[4] >> 2;
+  if (txt_type != 0) return;   // only plain text for now
+
+  uint32_t timestamp;
+  memcpy(&timestamp, data, 4);
+  data[len] = 0;   // null-terminate (Mesh.cpp's decrypt buffer has the slack)
+  const char* body = (const char*)&data[5];
+
+  // Resolve channel name by comparing secret back to our table.
+  const char* chan_name = "?";
+  for (int i = 0; i < _num_chat_chans; i++) {
+    if (memcmp(_chat_chans[i].secret, channel.secret, sizeof(channel.secret)) == 0) {
+      chan_name = _chat_chan_names[i]; break;
+    }
+  }
+
+  // Split "Sender: text" if present.
+  const char* sep = strstr(body, ": ");
+  char sender[24]; sender[0] = 0;
+  const char* text = body;
+  if (sep && (sep - body) < (int)sizeof(sender)) {
+    size_t n = sep - body;
+    memcpy(sender, body, n); sender[n] = 0;
+    text = sep + 2;
+  }
+
+  extern void wifiAdminPushChat(const char* channel, const char* sender, const char* text, uint32_t timestamp);
+  wifiAdminPushChat(chan_name, sender, text, timestamp);
+}
+#endif
+
 void MyMesh::begin(FILESYSTEM *fs) {
   mesh::Mesh::begin();
   _fs = fs;
@@ -967,6 +1244,12 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
 #if ENV_INCLUDE_GPS == 1
   applyGpsPrefs();
+#endif
+
+#if defined(ESP_PLATFORM) && defined(WIFI_PROVISIONING)
+  addChatChannel("Public", REPEATER_PUBLIC_GROUP_PSK);
+  loadPersistentChatChannels();
+  loadBlockPatterns();
 #endif
 }
 

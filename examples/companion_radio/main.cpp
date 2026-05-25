@@ -35,11 +35,27 @@ static uint32_t _atoi(const char* sp) {
 #endif
 
 #ifdef ESP32
-  #ifdef WIFI_SSID
+  #if defined(WIFI_PROVISIONING) || defined(WIFI_SSID)
     #include <helpers/esp32/SerialWifiInterface.h>
     SerialWifiInterface serial_interface;
     #ifndef TCP_PORT
       #define TCP_PORT 5000
+    #endif
+    #ifdef WIFI_PROVISIONING
+      #include <helpers/esp32/WifiProvisioning.h>
+      static WifiProvisioning::Config _wifi_cfg = []() {
+        WifiProvisioning::Config c;
+        c.ap_password = "meshcore123";
+        #ifdef PIN_USER_BTN
+        c.user_btn_pin = PIN_USER_BTN;
+        #endif
+        #ifdef WIFI_SSID
+        c.bootstrap_ssid = WIFI_SSID;
+        c.bootstrap_password = WIFI_PWD;
+        #endif
+        return c;
+      }();
+      WifiProvisioning wifi_provisioning(_wifi_cfg);
     #endif
   #elif defined(BLE_PIN_CODE)
     #include <helpers/esp32/SerialBLEInterface.h>
@@ -199,7 +215,11 @@ void setup() {
     #endif
   );
 
-#ifdef WIFI_SSID
+#if defined(WIFI_PROVISIONING)
+  board.setInhibitSleep(true);   // prevent sleep when WiFi is active
+  wifi_provisioning.begin();
+  serial_interface.begin(TCP_PORT);
+#elif defined(WIFI_SSID)
   board.setInhibitSleep(true);   // prevent sleep when WiFi is active
   WiFi.setAutoReconnect(true);
 
@@ -247,6 +267,9 @@ void loop() {
   sensors.loop();
 #ifdef DISPLAY_CLASS
   ui_task.loop();
+#endif
+#ifdef WIFI_PROVISIONING
+  wifi_provisioning.loop();
 #endif
   rtc_clock.tick();
 

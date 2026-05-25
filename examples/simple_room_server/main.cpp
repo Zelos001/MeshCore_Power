@@ -12,6 +12,46 @@ StdRNG fast_rng;
 SimpleMeshTables tables;
 MyMesh the_mesh(board, radio_driver, *new ArduinoMillis(), fast_rng, rtc_clock, tables);
 
+#if defined(ESP32) && defined(WIFI_PROVISIONING)
+  #include <helpers/esp32/WifiProvisioning.h>
+  #include <helpers/esp32/WifiAdminUI.h>
+  #include <helpers/esp32/WifiCliBridge.h>
+  static WifiProvisioning::Config _wifi_cfg = []() {
+    WifiProvisioning::Config c;
+    c.ap_password = "meshcore123";
+    #ifdef PIN_USER_BTN
+    c.user_btn_pin = PIN_USER_BTN;
+    #endif
+    #ifdef WIFI_SSID
+    c.bootstrap_ssid = WIFI_SSID;
+    c.bootstrap_password = WIFI_PWD;
+    #endif
+    return c;
+  }();
+  WifiProvisioning wifi_provisioning(_wifi_cfg);
+
+  class _RoomMeshInfo : public MeshInfoProvider {
+  public:
+    const char* nodeName() override { return the_mesh.getNodeName(); }
+    const char* role() override { return the_mesh.getRole(); }
+    const char* firmwareVer() override { return the_mesh.getFirmwareVer(); }
+    void formatNeighbours(char* out) override { the_mesh.formatNeighborsReply(out); }
+    void formatStats(char* out) override { the_mesh.formatStatsReply(out); }
+    void formatRadioStats(char* out) override { the_mesh.formatRadioStatsReply(out); }
+    void formatPacketStats(char* out) override { the_mesh.formatPacketStatsReply(out); }
+  };
+  static _RoomMeshInfo _mesh_info;
+  static WifiAdminUI* admin_ui = nullptr;
+
+  static void _cli_adapter(const char* cmd, char* reply) {
+    char buf[256];
+    strncpy(buf, cmd, sizeof(buf) - 1);
+    buf[sizeof(buf) - 1] = 0;
+    the_mesh.handleCommand(0, buf, reply);
+  }
+  static WifiCliBridge cli_bridge(5050, _cli_adapter);
+#endif
+
 void halt() {
   while (1) ;
 }
@@ -76,6 +116,16 @@ void setup() {
   ui_task.begin(the_mesh.getNodePrefs(), FIRMWARE_BUILD_DATE, FIRMWARE_VERSION);
 #endif
 
+#if defined(ESP32) && defined(WIFI_PROVISIONING)
+  board.setInhibitSleep(true);   // WiFi dies when board sleeps
+  wifi_provisioning.begin();
+  if (wifi_provisioning.inStaMode() && wifi_provisioning.webServer()) {
+    admin_ui = new WifiAdminUI(wifi_provisioning.webServer(), &_mesh_info);
+    admin_ui->begin();
+    cli_bridge.begin();
+  }
+#endif
+
   // send out initial zero hop Advertisement to the mesh
 #if ENABLE_ADVERT_ON_BOOT == 1
   the_mesh.sendSelfAdvertisement(16000, false);
@@ -113,6 +163,10 @@ void loop() {
   sensors.loop();
 #ifdef DISPLAY_CLASS
   ui_task.loop();
+#endif
+#if defined(ESP32) && defined(WIFI_PROVISIONING)
+  wifi_provisioning.loop();
+  if (wifi_provisioning.inStaMode()) cli_bridge.loop();
 #endif
   rtc_clock.tick();
 }
