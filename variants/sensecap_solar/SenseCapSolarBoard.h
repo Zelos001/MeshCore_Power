@@ -10,9 +10,32 @@ protected:
   void initiateShutdown(uint8_t reason) override;
 #endif
 
+private:
+#ifdef PIN_USER_BTN
+  unsigned long _btn_down_at = 0;  // user-button press timestamp (0 = not pressed)
+  static constexpr unsigned long USER_BTN_HOLD_OFF_MILLIS = 1500;
+#endif
+
 public:
   SenseCapSolarBoard() : NRF52Board("SENSECAP_SOLAR_OTA") {}
   void begin();
+
+#ifdef PIN_USER_BTN
+  // Hold the user button for >= 1.5s to power off.
+  void pollButton() override {
+    int btnState = digitalRead(PIN_USER_BTN);
+    if (btnState == LOW) {
+      if (_btn_down_at == 0) {
+        _btn_down_at = millis();
+      } else if ((unsigned long)(millis() - _btn_down_at) >= USER_BTN_HOLD_OFF_MILLIS) {
+        Serial.println("Powering off...");
+        powerOff();  // does not return
+      }
+    } else {
+      _btn_down_at = 0;
+    }
+  }
+#endif
 
 #if defined(P_LORA_TX_LED)
   void onBeforeTransmit() override {
