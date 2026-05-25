@@ -155,8 +155,18 @@ button.ghost{background:transparent}
 .kv .k{color:var(--mute);font-size:.85em}
 .kv .v{font-family:var(--mono);text-align:right;color:var(--ink)}
 .kv .v.warn{color:var(--warn)}.kv .v.bad{color:var(--danger)}.kv .v.good{color:var(--tx)}
-.kv input[type=number],.kv select{padding:.15em .4em;font:inherit;font-family:var(--mono);border:1px solid var(--line);border-radius:3px;background:var(--bg);color:var(--ink);min-width:6em;text-align:right}
+.kv input[type=number],.kv select{padding:.15em .4em;font:inherit;font-family:var(--mono);border:1px solid var(--line);border-radius:3px;background:var(--bg);color:var(--ink);text-align:right}
 .kv select{text-align:left;text-align-last:left}
+.kv input[type=number]{width:7em}.kv select{min-width:9em;max-width:14em}
+.rcard{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:.6em;margin:.6em 0}
+.rcard h3{margin:0 0 .5em;font-size:.85em;color:var(--mute);text-transform:uppercase;letter-spacing:.04em}
+.rcard .kv{grid-template-columns:minmax(9em,11em) auto;column-gap:1em;row-gap:.3em}
+.rcard .kv .v{text-align:left}
+.rcard .unit{color:var(--mute);margin-left:.4em;font-family:var(--mono);font-size:.9em}
+.rcard .presets{margin-top:.7em;padding-top:.5em;border-top:1px dashed var(--line)}
+.rcard .presets .lbl{font-size:.8em;color:var(--mute);margin-bottom:.3em}
+.rcard .presets .row{display:flex;flex-wrap:wrap;gap:.35em}
+.rcard .presets button{font-size:.85em;padding:.3em .7em}
 .main{display:grid;grid-template-columns:1fr 360px;gap:.6em;margin-top:.4em}
 @media (max-width:880px){.main{grid-template-columns:1fr}}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:6px;display:flex;flex-direction:column;min-height:320px}
@@ -206,10 +216,15 @@ button.ghost{background:transparent}
 
 <section class=cards>
   <div class=card><h3>Network</h3><div id=net class=kv>&hellip;</div></div>
-  <div class=card><h3>Radio config</h3><div id=rcfg class=kv>&hellip;</div></div>
   <div class=card><h3>Mesh</h3><div id=stats class=kv>&hellip;</div></div>
   <div class=card><h3>Radio stats</h3><div id=rstats class=kv>&hellip;</div></div>
   <div class=card><h3>Packets</h3><div id=pstats class=kv>&hellip;</div></div>
+</section>
+
+<section class=rcard>
+  <h3>Radio config</h3>
+  <div id=rcfg class=kv>&hellip;</div>
+  <div id=rcfg-presets class=presets></div>
 </section>
 
 <div class=main>
@@ -371,14 +386,14 @@ function renderRadioCfg(j){
   const phb=j.path_hash_bytes|0;
   const phCls=phb>=2?'good':'warn';
   const bwOpts=[7.8,10.4,15.6,20.8,31.25,41.7,62.5,125,250,500];
-  const fEd=`<input id=f-ed type=number min=150 max=2500 step=0.025 value="${j.freq.toFixed(3)}" onchange="setFreq(this.value)"> MHz`;
+  const fEd=`<input id=f-ed type=number min=150 max=2500 step=0.025 value="${j.freq.toFixed(3)}" onchange="setFreq(this.value)"><span class=unit>MHz</span>`;
   const bwEd=`<select id=bw-ed onchange="setBw(this.value)">`+
     bwOpts.map(b=>`<option value=${b} ${b===j.bw?'selected':''}>${b.toFixed(b<10?2:1)} kHz</option>`).join('')+`</select>`;
   const sfEd=`<select id=sf-ed onchange="setSf(this.value)">`+
     [5,6,7,8,9,10,11,12].map(s=>`<option value=${s} ${s==j.sf?'selected':''}>SF${s}</option>`).join('')+`</select>`;
   const crEd=`<select id=cr-ed onchange="setCr(this.value)">`+
     [5,6,7,8].map(c=>`<option value=${c} ${c==j.cr?'selected':''}>4/${c}</option>`).join('')+`</select>`;
-  const txEd=`<input id=tx-ed type=number min=-9 max=22 step=1 value="${j.tx_power}" onchange="setTx(this.value)"> dBm`;
+  const txEd=`<input id=tx-ed type=number min=-9 max=22 step=1 value="${j.tx_power}" onchange="setTx(this.value)"><span class=unit>dBm</span>`;
   const phEd=`<select id=ph-ed onchange="setPh(this.value)">`+
     [[0,'1B (default)'],[1,'2B (recommended)'],[2,'3B']].map(([v,l])=>`<option value=${v} ${v==j.path_hash_mode?'selected':''}>${l}</option>`).join('')+`</select>`;
   renderKV($('rcfg'),[
@@ -390,12 +405,11 @@ function renderRadioCfg(j){
     ['Path hash size', phEd, phCls],
     ['RX boosted gain', j.rx_boosted ? 'on' : 'off'],
   ]);
-  // Region preset chips below the kv grid.
-  const presets=document.createElement('div');
-  presets.style.cssText='margin-top:.5em;display:flex;flex-wrap:wrap;gap:.3em';
-  presets.innerHTML='<div style="width:100%;font-size:.8em;color:var(--mute);margin-bottom:.15em">Region presets (sets freq/BW/SF/CR; reboot to apply):</div>'+
-    RADIO_PRESETS.map((p,i)=>`<button style="font-size:.8em;padding:.25em .55em" onclick="applyPreset(${i})">${p[0]}</button>`).join('');
-  $('rcfg').appendChild(presets);
+  $('rcfg-presets').innerHTML=
+    `<div class=lbl>Region presets (applies freq/BW/SF/CR; reboot to take effect):</div>`+
+    `<div class=row>`+
+    RADIO_PRESETS.map((p,i)=>`<button onclick="applyPreset(${i})">${p[0]}</button>`).join('')+
+    `</div>`;
 }
 async function setRadio(freq,bw,sf,cr,reason){
   const cmd=`set radio ${freq},${bw},${sf},${cr}`;
