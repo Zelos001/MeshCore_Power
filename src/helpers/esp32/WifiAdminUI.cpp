@@ -359,25 +359,56 @@ function renderRadio(j){
   ]);
 }
 let _lastRadioCfg=null;
+// Common starting points by region. Format: [label, freq, bw, sf, cr]
+const RADIO_PRESETS=[
+  ['USA / Canada (Recommended)', 910.525, 62.5, 7, 5],
+  ['EU868 (Default)',            869.618, 62.5, 8, 5],
+  ['Legacy Wide (pre-1.14)',     869.525, 250.0, 11, 5],
+];
 function renderRadioCfg(j){
   if(!j||!j.freq){return $('rcfg').textContent='(unavailable)';}
   _lastRadioCfg=j;
   const phb=j.path_hash_bytes|0;
   const phCls=phb>=2?'good':'warn';
-  const txEd=`<input id=tx-ed type=number min=-9 max=22 step=1 value="${j.tx_power}" onchange="setTx(this.value)"> dBm`;
+  const bwOpts=[7.8,10.4,15.6,20.8,31.25,41.7,62.5,125,250,500];
+  const fEd=`<input id=f-ed type=number min=150 max=2500 step=0.025 value="${j.freq.toFixed(3)}" onchange="setFreq(this.value)"> MHz`;
+  const bwEd=`<select id=bw-ed onchange="setBw(this.value)">`+
+    bwOpts.map(b=>`<option value=${b} ${b===j.bw?'selected':''}>${b.toFixed(b<10?2:1)} kHz</option>`).join('')+`</select>`;
+  const sfEd=`<select id=sf-ed onchange="setSf(this.value)">`+
+    [5,6,7,8,9,10,11,12].map(s=>`<option value=${s} ${s==j.sf?'selected':''}>SF${s}</option>`).join('')+`</select>`;
   const crEd=`<select id=cr-ed onchange="setCr(this.value)">`+
     [5,6,7,8].map(c=>`<option value=${c} ${c==j.cr?'selected':''}>4/${c}</option>`).join('')+`</select>`;
+  const txEd=`<input id=tx-ed type=number min=-9 max=22 step=1 value="${j.tx_power}" onchange="setTx(this.value)"> dBm`;
   const phEd=`<select id=ph-ed onchange="setPh(this.value)">`+
     [[0,'1B (default)'],[1,'2B (recommended)'],[2,'3B']].map(([v,l])=>`<option value=${v} ${v==j.path_hash_mode?'selected':''}>${l}</option>`).join('')+`</select>`;
   renderKV($('rcfg'),[
-    ['Frequency', `${j.freq.toFixed(3)} MHz`],
-    ['Bandwidth', `${j.bw.toFixed(1)} kHz`],
-    ['Spreading factor', `SF${j.sf}`],
+    ['Frequency', fEd],
+    ['Bandwidth', bwEd],
+    ['Spreading factor', sfEd],
     ['Coding rate', crEd],
     ['TX power', txEd],
     ['Path hash size', phEd, phCls],
     ['RX boosted gain', j.rx_boosted ? 'on' : 'off'],
   ]);
+  // Region preset chips below the kv grid.
+  const presets=document.createElement('div');
+  presets.style.cssText='margin-top:.5em;display:flex;flex-wrap:wrap;gap:.3em';
+  presets.innerHTML='<div style="width:100%;font-size:.8em;color:var(--mute);margin-bottom:.15em">Region presets (sets freq/BW/SF/CR; reboot to apply):</div>'+
+    RADIO_PRESETS.map((p,i)=>`<button style="font-size:.8em;padding:.25em .55em" onclick="applyPreset(${i})">${p[0]}</button>`).join('');
+  $('rcfg').appendChild(presets);
+}
+async function setRadio(freq,bw,sf,cr,reason){
+  const cmd=`set radio ${freq},${bw},${sf},${cr}`;
+  const t=await _runCmd(cmd);
+  $('out').value+=`\n> ${cmd}\n${t}`;$('out').scrollTop=$('out').scrollHeight;
+  if(t.indexOf('reboot')>=0)alert(`${reason} saved. Reboot the node from the home page to apply.`);
+  refresh();
+}
+async function setFreq(v){if(!_lastRadioCfg)return;const j=_lastRadioCfg;setRadio(parseFloat(v),j.bw,j.sf,j.cr,'Frequency');}
+async function setBw(v){if(!_lastRadioCfg)return;const j=_lastRadioCfg;setRadio(j.freq,parseFloat(v),j.sf,j.cr,'Bandwidth');}
+async function setSf(v){if(!_lastRadioCfg)return;const j=_lastRadioCfg;setRadio(j.freq,j.bw,parseInt(v,10),j.cr,'Spreading factor');}
+function applyPreset(i){const p=RADIO_PRESETS[i];if(!confirm(`Apply preset "${p[0]}":\n  ${p[1]} MHz, BW ${p[2]}, SF${p[3]}, CR 4/${p[4]}\n\nReboot required to take effect.`))return;
+  setRadio(p[1],p[2],p[3],p[4],`Preset "${p[0]}"`);
 }
 async function _runCmd(cmd){
   const r=await fetch('/api/cmd',{method:'POST',body:new URLSearchParams({cmd})});
