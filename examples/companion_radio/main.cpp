@@ -239,6 +239,8 @@ void setup() {
   ui_task.begin(disp, &sensors, the_mesh.getNodePrefs());  // still want to pass this in as dependency, as prefs might be moved
   ui_task.setShutdownHandler(&the_mesh);
 #endif
+
+  board.onBootComplete();
 }
 
 void loop() {
