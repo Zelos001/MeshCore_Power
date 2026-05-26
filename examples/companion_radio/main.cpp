@@ -2,6 +2,11 @@
 #include <Mesh.h>
 #include "MyMesh.h"
 
+#if defined(ESP32) && defined(TCP_CONSOLE_PORT) && defined(ADMIN_PASSWORD)
+  #include <helpers/esp32/TCPConsole.h>
+  TCPConsole tcp_console(nullptr);  // prefs set in setup()
+#endif
+
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
   uint32_t n = 0;
@@ -35,7 +40,7 @@ static uint32_t _atoi(const char* sp) {
 #endif
 
 #ifdef ESP32
-  #ifdef WIFI_SSID
+  #if defined(WIFI_SSID) || defined(USE_ETHERNET)
     #include <helpers/esp32/SerialWifiInterface.h>
     SerialWifiInterface serial_interface;
     #ifndef TCP_PORT
@@ -115,6 +120,10 @@ void setup() {
   Serial.begin(115200);
 
   board.begin();
+  
+  #if defined(ESP32) && defined(TCP_CONSOLE_PORT) && defined(ADMIN_PASSWORD)
+    tcp_console.begin();
+  #endif
 
 #ifdef DISPLAY_CLASS
   DisplayDriver* disp = NULL;
@@ -128,7 +137,7 @@ void setup() {
     disp->endFrame();
   }
 #endif
-
+  
   if (!radio_init()) { halt(); }
 
   fast_rng.begin(radio_driver.getRngSeed());
@@ -149,6 +158,9 @@ void setup() {
   #endif
   store.begin();
   the_mesh.begin(
+
+    tcp_console.setPrefs(the_mesh.getNodePrefs());
+
     #ifdef DISPLAY_CLASS
         disp != NULL
     #else
@@ -200,21 +212,12 @@ void setup() {
   );
 
 #ifdef WIFI_SSID
-  board.setInhibitSleep(true);   // prevent sleep when WiFi is active
-  WiFi.setAutoReconnect(true);
-
-  WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
-      if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
-          WIFI_DEBUG_PRINTLN("WiFi disconnected. Flagging for reconnect...");
-          wifi_needs_reconnect = true;
-      } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
-          WIFI_DEBUG_PRINTLN("WiFi connected successfully!");
-          wifi_needs_reconnect = false;
-      }
-  });
-
+  board.setInhibitSleep(true);
   WiFi.begin(WIFI_SSID, WIFI_PWD);
   serial_interface.begin(TCP_PORT);
+#elif defined(USE_ETHERNET)
+  serial_interface.begin(TCP_PORT);
+  Serial.printf("TCP server started on port %d\n", TCP_PORT);
 #elif defined(BLE_PIN_CODE)
   serial_interface.begin(BLE_NAME_PREFIX, the_mesh.getNodePrefs()->node_name, the_mesh.getBLEPin());
 #elif defined(SERIAL_RX)
@@ -244,10 +247,15 @@ void setup() {
 
 void loop() {
   the_mesh.loop();
+  #if defined(ESP32) && defined(TCP_CONSOLE_PORT) && defined(ADMIN_PASSWORD)
+    tcp_console.loop(the_mesh);
+  #endif
+
   sensors.loop();
-#ifdef DISPLAY_CLASS
-  ui_task.loop();
-#endif
+  #ifdef DISPLAY_CLASS
+    ui_task.loop();
+  #endif
+  
   rtc_clock.tick();
 
 #if defined(ESP32) && defined(WIFI_SSID)
