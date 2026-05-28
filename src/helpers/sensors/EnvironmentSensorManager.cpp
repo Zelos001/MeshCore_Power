@@ -168,16 +168,21 @@ public:
   void begin() override { }
   void stop() override { }
   void loop() override {
-    if (ublox_GNSS.getGnssFixOk(8)) {
+    // The numeric arg is maxWait (ms) for the I²C poll, not a field index.
+    // The previous 2/8 ms values were below the ublox response window, so polls
+    // routinely timed out and returned stale/garbage PVT data (observed: random
+    // wrong-hemisphere longitudes despite getGnssFixOk() returning true).
+    // 250 ms matches the SparkFun library's typical response time.
+    if (ublox_GNSS.getGnssFixOk(250)) {
       _fix = true;
-      _lat = ublox_GNSS.getLatitude(2) / 10;
-      _lng = ublox_GNSS.getLongitude(2) / 10;
-      _alt = ublox_GNSS.getAltitude(2);
-      _sats = ublox_GNSS.getSIV(2);
+      _lat = ublox_GNSS.getLatitude(250) / 10;
+      _lng = ublox_GNSS.getLongitude(250) / 10;
+      _alt = ublox_GNSS.getAltitudeMSL(250);   // height above mean sea level, not ellipsoid
+      _sats = ublox_GNSS.getSIV(250);
     } else {
       _fix = false;
     }
-    _epoch = ublox_GNSS.getUnixEpoch(2);
+    _epoch = ublox_GNSS.getUnixEpoch(250);
   }
   bool isEnabled() override { return true; }
 };
@@ -702,16 +707,25 @@ void EnvironmentSensorManager::rakGPSInit(){
   //search for the correct IO standby pin depending on socket used
   if(gpsIsAwake(WB_IO2)){
   }
-  else if(gpsIsAwake(WB_IO4)){
-  }
-  else if(gpsIsAwake(WB_IO5)){
-  }
-  else{
-    MESH_DEBUG_PRINTLN("No GPS found");
-    gps_active = false;
-    gps_detected = false;
-    Serial1.end();
-    return;
+  else {
+    // WB_IO2 controls the 3V3_S switched peripheral rail on these RAK boards.
+    // gpsIsAwake() leaves the pin as INPUT on failure, which drops the rail and
+    // takes I²C peripherals (RTC, display, the GPS itself) down with it.
+    // Restore it before probing other sockets.
+    pinMode(WB_IO2, OUTPUT);
+    digitalWrite(WB_IO2, HIGH);
+
+    if(gpsIsAwake(WB_IO4)){
+    }
+    else if(gpsIsAwake(WB_IO5)){
+    }
+    else{
+      MESH_DEBUG_PRINTLN("No GPS found");
+      gps_active = false;
+      gps_detected = false;
+      Serial1.end();
+      return;
+    }
   }
 
   #ifndef FORCE_GPS_ALIVE // for use with repeaters, until GPS toggle is implimented
