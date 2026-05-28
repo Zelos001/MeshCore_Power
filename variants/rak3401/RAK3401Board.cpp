@@ -4,6 +4,17 @@
 #include "RAK3401Board.h"
 
 #ifdef NRF52_POWER_MANAGEMENT
+#ifdef PIN_USER_BTN_ANA
+// LPCOMP wake config for the AIN user button. Defaults assume PIN_USER_BTN_ANA
+// is pin 31 (P0.31 = AIN7); override via build flags if the button moves.
+#ifndef PWRMGT_BTN_LPCOMP_AIN
+  #define PWRMGT_BTN_LPCOMP_AIN 7
+#endif
+#ifndef PWRMGT_BTN_LPCOMP_REFSEL
+  #define PWRMGT_BTN_LPCOMP_REFSEL 3   // 4/8 VDD (~1.65V at 3.3V) threshold
+#endif
+#endif
+
 // Static configuration for power management
 // Values set in variant.h defines
 const PowerMgtConfig power_config = {
@@ -23,6 +34,39 @@ void RAK3401Board::initiateShutdown(uint8_t reason) {
       reason == SHUTDOWN_REASON_BOOT_PROTECT) {
     configureVoltageWake(power_config.lpcomp_ain_channel, power_config.lpcomp_refsel);
   }
+
+#ifdef PIN_USER_BTN_ANA
+  // Wake-from-SYSTEMOFF on the AIN user button (P0.31 = AIN7).
+  //
+  // This pin is wired as an *analog* button (see MomentaryButton in target.cpp:
+  // pressed == analogRead() < threshold). GPIO SENSE can't be used as the wake
+  // source: using the pin as an analog/SAADC input leaves its digital input
+  // buffer disconnected, so NRF_GPIO->IN reads 0 regardless of the real ~VDD
+  // level and SENSE_Low latches immediately (verified on hardware — analogRead
+  // reports ~VDD while IN=0). A GPIO SENSE arm therefore wakes the chip the
+  // instant we enter SYSTEMOFF and it can never stay off.
+  //
+  // LPCOMP works in the analog domain, so it sees the idle level correctly. Arm
+  // it for a DOWN crossing at ~1/2 VDD: released idles near VDD (above), a press
+  // pulls the pin toward 0V (below) -> downward crossing -> wake. The LPCOMP is
+  // otherwise unused for a USER shutdown (voltage wake is only armed for the
+  // low-voltage / boot-protect reasons handled above), so there is no conflict.
+  //
+  // Wait for release first so LPCOMP is armed while the level is above the
+  // threshold — otherwise the initial press generates no new downward crossing.
+  // Bounded by a timeout so a stuck/low reading can never wedge shutdown.
+  analogReadResolution(12);  // as getBattMilliVolts() does; makes the threshold below unambiguous
+  const int BTN_RELEASED_ADC = 2048;  // mid-scale at 12-bit: above the ~1/2 VDD LPCOMP threshold
+  uint32_t t0 = millis();
+  int released_streak = 0;
+  while (released_streak < 5 && (millis() - t0) < 5000) {
+    if (analogRead(PIN_USER_BTN_ANA) > BTN_RELEASED_ADC) released_streak++;
+    else released_streak = 0;
+    delay(10);
+  }
+
+  configureVoltageWake(PWRMGT_BTN_LPCOMP_AIN, PWRMGT_BTN_LPCOMP_REFSEL, /*detect_down=*/true);
+#endif
 
   enterSystemOff(reason);
 }
