@@ -173,7 +173,12 @@ public:
     // routinely timed out and returned stale/garbage PVT data (observed: random
     // wrong-hemisphere longitudes despite getGnssFixOk() returning true).
     // 250 ms matches the SparkFun library's typical response time.
-    if (ublox_GNSS.getGnssFixOk(250)) {
+    //
+    // Require BOTH gnssFixOK (DOP/accuracy mask passed) AND fixType==3 (3D fix).
+    // Ublox reports gnssFixOK=true with bogus coords during cold start (e.g. an
+    // unfixed module on first boot reporting coordinates from factory almanac);
+    // requiring fixType==3 filters those out.
+    if (ublox_GNSS.getGnssFixOk(250) && ublox_GNSS.getFixType(250) == 3) {
       _fix = true;
       _lat = ublox_GNSS.getLatitude(250) / 10;
       _lng = ublox_GNSS.getLongitude(250) / 10;
