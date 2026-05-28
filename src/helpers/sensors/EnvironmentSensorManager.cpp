@@ -815,6 +815,7 @@ void EnvironmentSensorManager::stop_gps() {
 
 void EnvironmentSensorManager::loop() {
   static long next_gps_update = 0;
+  static uint8_t gps_debug_skip = 0;   // throttle: print roughly every 10th update tick
 
   #if ENV_INCLUDE_GPS
   if (gps_active) {
@@ -827,17 +828,21 @@ void EnvironmentSensorManager::loop() {
     if ((i2cGPSFlag || serialGPSFlag) && _location->isValid()) {
       node_lat = ((double)_location->getLatitude())/1000000.;
       node_lon = ((double)_location->getLongitude())/1000000.;
-      MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
       node_altitude = ((double)_location->getAltitude()) / 1000.0;
-      MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
+      if (gps_debug_skip-- == 0) {
+        gps_debug_skip = 9;
+        MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
+      }
     }
     #else
     if (_location->isValid()) {
       node_lat = ((double)_location->getLatitude())/1000000.;
       node_lon = ((double)_location->getLongitude())/1000000.;
-      MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
       node_altitude = ((double)_location->getAltitude()) / 1000.0;
-      MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
+      if (gps_debug_skip-- == 0) {
+        gps_debug_skip = 9;
+        MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
+      }
     }
     #endif
     }
