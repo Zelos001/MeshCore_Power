@@ -73,6 +73,13 @@ public:
       return;
     }
 
+  #if defined(ARDUINO_USB_CDC_ON_BOOT) && ARDUINO_USB_CDC_ON_BOOT
+    if (Serial) {
+      delay(1);
+      return;
+    }
+  #endif
+
     // Set GPIO wakeup
     gpio_num_t wakeupPin = (gpio_num_t)getIRQGpio();
 

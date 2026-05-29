@@ -242,6 +242,8 @@ protected:
                              const uint8_t* path, uint8_t path_len,
                              const uint8_t* alt_path, uint8_t alt_path_len,
                              uint32_t delay_millis);
+  void sendFloodScopedWithSelfPath(const TransportKey& scope, mesh::Packet* pkt,
+                                   uint32_t delay_millis, uint8_t path_hash_size);
 
 public:
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);

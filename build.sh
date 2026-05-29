@@ -446,7 +446,6 @@ prompt_for_cascadia_profile_enable() {
   echo "  - multi.acks: 1"
   echo "  - path.hash.mode: 2"
   echo "  - loop.detect: minimal"
-  echo "  - powersaving: on"
   prompt_on_off_choice "Enable Cascadia profile overrides" "on"
   if [ "$MENU_CHOICE" == "on" ]; then
     FIRMWARE_PROFILE_OVERRIDE="cascadia"
@@ -958,7 +957,7 @@ apply_radio_overrides() {
 apply_firmware_profile_overrides() {
   case "${FIRMWARE_PROFILE_OVERRIDE,,}" in
     cascadia)
-      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCASCADIA_PROFILE=1 -DDEFAULT_RX_DELAY_BASE=1.0f -DDEFAULT_LOOP_DETECT=1 -DDEFAULT_POWERSAVING_ENABLED=1 -DDEFAULT_AGC_RESET_INTERVAL=2 -DDEFAULT_ADVERT_INTERVAL=0 -DDEFAULT_FLOOD_ADVERT_INTERVAL=83 -DDEFAULT_MULTI_ACKS=1 -DDEFAULT_PATH_HASH_MODE=2"
+      export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS} -DCASCADIA_PROFILE=1 -DDEFAULT_RX_DELAY_BASE=1.0f -DDEFAULT_LOOP_DETECT=1 -DDEFAULT_AGC_RESET_INTERVAL=2 -DDEFAULT_ADVERT_INTERVAL=0 -DDEFAULT_FLOOD_ADVERT_INTERVAL=83 -DDEFAULT_MULTI_ACKS=1 -DDEFAULT_PATH_HASH_MODE=2"
       ;;
   esac
 }

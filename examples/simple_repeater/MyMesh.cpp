@@ -2143,7 +2143,6 @@ void MyMesh::begin(FILESYSTEM *fs) {
   _prefs.multi_acks = DEFAULT_MULTI_ACKS;
   _prefs.path_hash_mode = DEFAULT_PATH_HASH_MODE;
   _prefs.loop_detect = DEFAULT_LOOP_DETECT;
-  _prefs.powersaving_enabled = DEFAULT_POWERSAVING_ENABLED;
 #endif
   acl.load(_fs, self_id);
   // TODO: key_store.begin();
@@ -2208,6 +2207,34 @@ void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint3
   }
 }
 
+void MyMesh::sendFloodScopedWithSelfPath(const TransportKey& scope, mesh::Packet* pkt,
+                                         uint32_t delay_millis, uint8_t path_hash_size) {
+  if (pkt == NULL) {
+    return;
+  }
+  if (path_hash_size == 0 || path_hash_size > MAX_ROUTE_HASH_BYTES) {
+    MESH_DEBUG_PRINTLN("%s MyMesh::sendFloodScopedWithSelfPath(): invalid path_hash_size", getLogDateTime());
+    return;
+  }
+
+  pkt->header &= ~PH_ROUTE_MASK;
+  if (scope.isNull()) {
+    pkt->header |= ROUTE_TYPE_FLOOD;
+  } else {
+    uint16_t codes[2];
+    codes[0] = scope.calcTransportCode(pkt);
+    codes[1] = 0;
+    pkt->header |= ROUTE_TYPE_TRANSPORT_FLOOD;
+    pkt->transport_codes[0] = codes[0];
+    pkt->transport_codes[1] = codes[1];
+  }
+
+  pkt->setPathHashSizeAndCount(path_hash_size, 1);
+  self_id.copyHashTo(pkt->path, path_hash_size);
+  getTables()->markSent(pkt);
+  sendPacket(pkt, 1, delay_millis);
+}
+
 bool MyMesh::sendRepeatersFloodText(const char* text) {
   if (text == NULL || *text == 0) return false;
 
@@ -2223,8 +2250,15 @@ bool MyMesh::sendRepeatersFloodText(const char* text) {
 
   const size_t max_data_len = MAX_PACKET_PAYLOAD - CIPHER_BLOCK_SIZE;
   const size_t prefix_cap = max_data_len > 5 ? max_data_len - 5 + 1 : 0;
+  char sender_name[sizeof(_prefs.node_name)];
+  StrHelper::strncpy(sender_name, _prefs.node_name, sizeof(sender_name));
+  for (char* p = sender_name; *p; p++) {
+    if (*p == ':') {
+      *p = ';';
+    }
+  }
   int prefix_written = prefix_cap > 0
-      ? snprintf((char*)&temp[5], prefix_cap, "%s: ", _prefs.node_name)
+      ? snprintf((char*)&temp[5], prefix_cap, "%s: ", sender_name)
       : -1;
   if (prefix_written < 0) {
     return false;
@@ -2247,7 +2281,7 @@ bool MyMesh::sendRepeatersFloodText(const char* text) {
     return false;
   }
 
-  sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
+  sendFloodScopedWithSelfPath(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
   return true;
 }
 
