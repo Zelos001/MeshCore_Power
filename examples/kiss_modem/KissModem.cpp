@@ -38,15 +38,15 @@ void KissModem::beginFrameWrite() {
 }
 
 void KissModem::rawWrite(uint8_t b) {
-  /* Once a frame has been aborted, swallow the rest of it so we never emit a
-     truncated KISS frame to the host. */
+  /* A frame is sent all-or-nothing; once we start dropping, swallow the rest so
+     we never emit a truncated KISS frame. */
   if (_tx_write_aborted) return;
 
-  /* Strictly non-blocking: if there is no room in the TX buffer, drop the rest
-     of this frame rather than wait. A stalled/absent USB-CDC host must never
-     stall loop() (any wait here starves the RX read loop and lets the TinyUSB
-     RX path overflow). Only write() when there is space, so write() can never
-     enter its internal busy-wait either. */
+  /* Non-blocking: if the TX buffer is full, drop this frame instead of waiting.
+     loop() is single-threaded and also services RX and the radio, so it must not
+     stall on a host that has stopped reading. Writing only when space is free
+     keeps the underlying write() from blocking; a dropped reply is harmless as
+     the host retries. */
   if (_serial.availableForWrite() <= 0) {
     _tx_write_aborted = true;
     return;

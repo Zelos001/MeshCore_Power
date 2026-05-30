@@ -109,8 +109,9 @@ void setup() {
 #else
   Serial.begin(115200);
 #if defined(ESP32)
-  /* Bound USB-CDC transmit so write() drops instead of blocking forever when the
-     host read side stalls; otherwise the single-threaded modem loop wedges. */
+  /* Cap how long a USB-CDC write blocks waiting for the host to drain the TX
+     buffer. loop() is single-threaded, so an unbounded wait when the host stalls
+     would also freeze RX and radio servicing. */
   Serial.setTxTimeoutMs(KISS_WRITE_TIMEOUT_MS);
 #endif
   uint32_t start = millis();

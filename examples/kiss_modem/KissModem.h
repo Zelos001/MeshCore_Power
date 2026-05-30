@@ -28,9 +28,9 @@
 #define KISS_DEFAULT_SLOTTIME    10
 #define KISS_TX_TIMEOUT_FACTOR   3/2   // 1.5x estimated airtime
 
-/* Max time (ms) to wait for serial TX buffer space before dropping a frame.
-   Prevents a stalled/absent USB-CDC host from blocking the single-threaded loop()
-   indefinitely (the ESP32 USB-CDC failure mode; UART transports never fill up). */
+/* Upper bound (ms) on how long a serial write may wait for the host to drain the
+   TX buffer. Keeps a stalled USB-CDC host from freezing the single-threaded loop();
+   UART transports drain via FIFO and never reach this. */
 #define KISS_WRITE_TIMEOUT_MS    50
 
 #define HW_CMD_GET_IDENTITY      0x01
