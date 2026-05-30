@@ -28,6 +28,11 @@
 #define KISS_DEFAULT_SLOTTIME    10
 #define KISS_TX_TIMEOUT_FACTOR   3/2   // 1.5x estimated airtime
 
+/* Max time (ms) to wait for serial TX buffer space before dropping a frame.
+   Prevents a stalled/absent USB-CDC host from blocking the single-threaded loop()
+   indefinitely (the ESP32 USB-CDC failure mode; UART transports never fill up). */
+#define KISS_WRITE_TIMEOUT_MS    50
+
 #define HW_CMD_GET_IDENTITY      0x01
 #define HW_CMD_GET_RANDOM        0x02
 #define HW_CMD_VERIFY_SIGNATURE  0x03
@@ -131,6 +136,10 @@ class KissModem {
   RadioConfig _config;
   bool _signal_report_enabled;
 
+  bool _tx_write_aborted;       // set when the current frame is dropped (no TX buffer space)
+
+  void beginFrameWrite();       // reset per-frame abort state
+  void rawWrite(uint8_t b);     // non-blocking write: drops the frame rather than stalling loop()
   void writeByte(uint8_t b);
   void writeFrame(uint8_t type, const uint8_t* data, uint16_t len);
   void writeHardwareFrame(uint8_t sub_cmd, const uint8_t* data, uint16_t len);

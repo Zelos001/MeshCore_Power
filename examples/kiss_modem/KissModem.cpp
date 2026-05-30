@@ -22,6 +22,7 @@ KissModem::KissModem(Stream& serial, mesh::LocalIdentity& identity, mesh::RNG& r
   _getStatsCallback = nullptr;
   _config = {0, 0, 0, 0, 0};
   _signal_report_enabled = true;
+  _tx_write_aborted = false;
 }
 
 void KissModem::begin() {
@@ -32,35 +33,58 @@ void KissModem::begin() {
   _tx_state = TX_IDLE;
 }
 
+void KissModem::beginFrameWrite() {
+  _tx_write_aborted = false;
+}
+
+void KissModem::rawWrite(uint8_t b) {
+  /* Once a frame has been aborted, swallow the rest of it so we never emit a
+     truncated KISS frame to the host. */
+  if (_tx_write_aborted) return;
+
+  /* Strictly non-blocking: if there is no room in the TX buffer, drop the rest
+     of this frame rather than wait. A stalled/absent USB-CDC host must never
+     stall loop() (any wait here starves the RX read loop and lets the TinyUSB
+     RX path overflow). Only write() when there is space, so write() can never
+     enter its internal busy-wait either. */
+  if (_serial.availableForWrite() <= 0) {
+    _tx_write_aborted = true;
+    return;
+  }
+  _serial.write(b);
+}
+
 void KissModem::writeByte(uint8_t b) {
   if (b == KISS_FEND) {
-    _serial.write(KISS_FESC);
-    _serial.write(KISS_TFEND);
+    rawWrite(KISS_FESC);
+    rawWrite(KISS_TFEND);
   } else if (b == KISS_FESC) {
-    _serial.write(KISS_FESC);
-    _serial.write(KISS_TFESC);
+    rawWrite(KISS_FESC);
+    rawWrite(KISS_TFESC);
   } else {
-    _serial.write(b);
+    rawWrite(b);
   }
 }
 
 void KissModem::writeFrame(uint8_t type, const uint8_t* data, uint16_t len) {
-  _serial.write(KISS_FEND);
+  beginFrameWrite();
+  rawWrite(KISS_FEND);
   writeByte(type);
   for (uint16_t i = 0; i < len; i++) {
     writeByte(data[i]);
   }
-  _serial.write(KISS_FEND);
+  rawWrite(KISS_FEND);
 }
 
 void KissModem::writeHardwareFrame(uint8_t sub_cmd, const uint8_t* data, uint16_t len) {
-  _serial.write(KISS_FEND);
+  beginFrameWrite();
+  rawWrite(KISS_FEND);
   writeByte(KISS_CMD_SETHARDWARE);
   writeByte(sub_cmd);
   for (uint16_t i = 0; i < len; i++) {
     writeByte(data[i]);
   }
-  _serial.write(KISS_FEND);
+  rawWrite(KISS_FEND);
 }
 
 void KissModem::writeHardwareError(uint8_t error_code) {

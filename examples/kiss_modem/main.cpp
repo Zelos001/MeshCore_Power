@@ -108,6 +108,11 @@ void setup() {
   modem = new KissModem(Serial1, identity, rng, radio_driver, board, sensors);
 #else
   Serial.begin(115200);
+#if defined(ESP32)
+  /* Bound USB-CDC transmit so write() drops instead of blocking forever when the
+     host read side stalls; otherwise the single-threaded modem loop wedges. */
+  Serial.setTxTimeoutMs(KISS_WRITE_TIMEOUT_MS);
+#endif
   uint32_t start = millis();
   while (!Serial && millis() - start < 3000) delay(10);
   delay(100);
