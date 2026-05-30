@@ -219,7 +219,7 @@ void Dispatcher::checkRecv() {
     #if MESH_PACKET_LOGGING
     Serial.print(getLogDateTime());
     Serial.printf(": RX, len=%d (type=%d, route=%s, payload_len=%d) SNR=%d RSSI=%d score=%d time=%d", 
-            pkt->getRawLength(), pkt->getPayloadType(), pkt->isRouteDirect() ? "D" : "F", pkt->payload_len,
+            pkt->getRawLength(), pkt->getPayloadType(), pkt->isRouteDirect() ? (pkt->isRouteFuzzy() ? "Z" : "D") : "F", pkt->payload_len,
             (int)pkt->getSNR(), (int)_radio->getLastRSSI(), (int)(score*1000), air_time);
 
     static uint8_t packet_hash[MAX_HASH_SIZE];
@@ -340,7 +340,7 @@ void Dispatcher::checkSend() {
     #if MESH_PACKET_LOGGING
       Serial.print(getLogDateTime());
       Serial.printf(": TX, len=%d (type=%d, route=%s, payload_len=%d)", 
-            len, outbound->getPayloadType(), outbound->isRouteDirect() ? "D" : "F", outbound->payload_len);
+            len, outbound->getPayloadType(), outbound->isRouteDirect() ? (outbound->isRouteFuzzy() ? "Z" : "D") : "F", outbound->payload_len);
       if (outbound->getPayloadType() == PAYLOAD_TYPE_PATH || outbound->getPayloadType() == PAYLOAD_TYPE_REQ
         || outbound->getPayloadType() == PAYLOAD_TYPE_RESPONSE || outbound->getPayloadType() == PAYLOAD_TYPE_TXT_MSG) {
         Serial.printf(" [%02X -> %02X]\n", (uint32_t)outbound->payload[1], (uint32_t)outbound->payload[0]);

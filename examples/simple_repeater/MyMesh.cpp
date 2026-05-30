@@ -450,6 +450,23 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   return true;
 }
 
+bool MyMesh::isNextHopNeighbor(const mesh::Packet* packet) {
+#if MAX_NEIGHBOURS
+  // TODO: check prefs to see if fuzzy pathing is enabled
+  // TODO: only consider neighbors that have been heard in a configurable amount of time
+  // TODO: make min SNR configurable
+  const int8_t min_snr = 0; // *4.f = actual snr value
+  for (int i = 0; i < MAX_NEIGHBOURS; ++i) {
+    auto neighbor = &neighbours[i];
+    if (neighbor->heard_timestamp > 0 && neighbor->snr >= min_snr && neighbor->id.isHashMatch(packet->path, packet->getPathHashSize())) {
+      return true;
+    }
+  }
+#endif
+
+return false;
+}
+
 const char *MyMesh::getLogDateTime() {
   static char tmp[32];
   uint32_t now = getRTCClock()->getCurrentTime();
@@ -480,7 +497,7 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
     if (f) {
       f.print(getLogDateTime());
       f.printf(": RX, len=%d (type=%d, route=%s, payload_len=%d) SNR=%d RSSI=%d score=%d", len,
-               pkt->getPayloadType(), pkt->isRouteDirect() ? "D" : "F", pkt->payload_len,
+               pkt->getPayloadType(), pkt->isRouteDirect() ? (pkt->isRouteFuzzy() ? "Z" : "D") : "F", pkt->payload_len,
                (int)_radio->getLastSNR(), (int)_radio->getLastRSSI(), (int)(score * 1000));
 
       if (pkt->getPayloadType() == PAYLOAD_TYPE_PATH || pkt->getPayloadType() == PAYLOAD_TYPE_REQ ||
@@ -506,7 +523,7 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
     if (f) {
       f.print(getLogDateTime());
       f.printf(": TX, len=%d (type=%d, route=%s, payload_len=%d)", len, pkt->getPayloadType(),
-               pkt->isRouteDirect() ? "D" : "F", pkt->payload_len);
+               pkt->isRouteDirect() ? (pkt->isRouteFuzzy() ? "Z" : "D") : "F", pkt->payload_len);
 
       if (pkt->getPayloadType() == PAYLOAD_TYPE_PATH || pkt->getPayloadType() == PAYLOAD_TYPE_REQ ||
           pkt->getPayloadType() == PAYLOAD_TYPE_RESPONSE || pkt->getPayloadType() == PAYLOAD_TYPE_TXT_MSG) {
@@ -525,7 +542,7 @@ void MyMesh::logTxFail(mesh::Packet *pkt, int len) {
     if (f) {
       f.print(getLogDateTime());
       f.printf(": TX FAIL!, len=%d (type=%d, route=%s, payload_len=%d)\n", len, pkt->getPayloadType(),
-               pkt->isRouteDirect() ? "D" : "F", pkt->payload_len);
+               pkt->isRouteDirect() ? (pkt->isRouteFuzzy() ? "Z" : "D") : "F", pkt->payload_len);
       f.close();
     }
   }

@@ -49,6 +49,35 @@ void Packet::calculatePacketHash(uint8_t* hash) const {
   sha.finalize(hash, MAX_HASH_SIZE);
 }
 
+bool Packet::isRouteFuzzy() const {
+  // Only direct routes make sense for fuzzy use
+  if (!isRouteDirect()) {
+    return false;
+  }
+
+  // Trace is a weird situation to handle, not supported
+  if (getPayloadType() == PAYLOAD_TYPE_TRACE) {
+    return false;
+  }
+
+  if (!isValidPathLen(path_len)) {
+    return false;
+  }
+
+  uint8_t hash_size = getPathHashSize();
+  uint8_t hash_count = getPathHashCount();
+  
+  uint8_t fuzzy_prefix[3]; // TODO: is there a constant somewhere for the max # of prefix bytes?
+  memset(fuzzy_prefix, FUZZY_PATH_PREFIX, 3);
+
+  if (memcmp(fuzzy_prefix, &path[hash_size * (hash_count - 1)], hash_size) == 0)
+  {
+    return true;
+  }
+
+  return false;
+}
+
 uint8_t Packet::writeTo(uint8_t dest[]) const {
   uint8_t i = 0;
   dest[i++] = header;
