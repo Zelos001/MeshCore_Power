@@ -564,6 +564,9 @@ void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* no
 #endif
 #if defined(PIN_USER_BTN_ANA)
   analog_btn.begin();
+  // Arm a permanent edge interrupt so presses are never lost when the main loop stalls
+  // (radio/BLE/flash) and the poll misses the edge. This also wakes the MCU from light sleep.
+  analog_btn.enableInterrupt();
 #endif
 
   _node_prefs = node_prefs;
@@ -750,15 +753,23 @@ void UITask::loop() {
 #endif
 #if defined(PIN_USER_BTN_ANA)
   if (abs(millis() - _analogue_pin_read_millis) > 10) {
-    int ev = analog_btn.check();
-    if (ev == BUTTON_EVENT_CLICK) {
-      c = checkDisplayOn(KEY_NEXT);
-    } else if (ev == BUTTON_EVENT_LONG_PRESS) {
-      c = handleLongPress(KEY_ENTER);
-    } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
-      c = handleDoubleClick(KEY_PREV);
-    } else if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
-      c = handleTripleClick(KEY_SELECT);
+    if (_display != NULL && !_display->isOn() && analog_btn.isPressed()) {
+      // Instant screen-wake: light the display on the press edge instead of waiting out
+      // the ~280ms multi-click window, then abandon the gesture so this press only wakes
+      // the screen and doesn't also navigate.
+      checkDisplayOn(0);
+      analog_btn.reset();
+    } else {
+      int ev = analog_btn.check();
+      if (ev == BUTTON_EVENT_CLICK) {
+        c = checkDisplayOn(KEY_NEXT);
+      } else if (ev == BUTTON_EVENT_LONG_PRESS) {
+        c = handleLongPress(KEY_ENTER);
+      } else if (ev == BUTTON_EVENT_DOUBLE_CLICK) {
+        c = handleDoubleClick(KEY_PREV);
+      } else if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
+        c = handleTripleClick(KEY_SELECT);
+      }
     }
     _analogue_pin_read_millis = millis();
   }

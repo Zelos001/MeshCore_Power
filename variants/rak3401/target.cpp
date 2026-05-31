@@ -13,7 +13,12 @@ RAK3401Board board;
   MomentaryButton user_btn(PIN_USER_BTN, 1000, true, true);
 
   #if defined(PIN_USER_BTN_ANA)
-  MomentaryButton analog_btn(PIN_USER_BTN_ANA, 1000, 20);
+  // Read the button digitally (not via SAADC/analogRead): it's a clean active-low input
+  // (internal pull-up + button to GND), and digitalRead coexists with the latch/wake edge
+  // interrupt (enableInterrupt) where analogRead does not (GPIOTE vs SAADC conflict).
+  // reverse=true (active-low), pulldownup=true (INPUT_PULLUP), multiclick=true enables the
+  // MULTI_CLICK_WINDOW_MS (280ms) window: single=NEXT / double=PREV / triple=SELECT / long=ENTER.
+  MomentaryButton analog_btn(PIN_USER_BTN_ANA, 1000, true, true, true);
   #endif
 #endif
 
