@@ -53,6 +53,11 @@ static Adafruit_BME280 BME280;
 static Adafruit_BMP280 BMP280(TELEM_WIRE);
 #endif
 
+#if ENV_INCLUDE_SEN0658
+#include "DFROBOT_SEN0658.h"
+static DFROBOT_SEN0658 SEN0658;
+#endif
+
 #if ENV_INCLUDE_SHTC3
 #include <Adafruit_SHTC3.h>
 static Adafruit_SHTC3 SHTC3;
@@ -449,6 +454,30 @@ static void query_rak12035(uint8_t ch, uint8_t sub_ch, CayenneLPP& lpp) {
 }
 #endif
 
+#if ENV_INCLUDE_SEN0658
+static uint8_t init_sen0658(TwoWire* wire, uint8_t addr) {
+  // SEN0658 requires setup() before begin().
+  if (!SEN0658.begin()) return 0;
+  return 1;
+}
+static void query_sen0658(uint8_t ch, uint8_t sub_ch, CayenneLPP& lpp) {
+  DFROBOT_SEN0658_Sample sample = {0};
+  if (SEN0658.readSample(sample)) {
+    // this is an external sensor, so don't start with SELF channel
+    lpp.addTemperature(ch, sample.temperature);
+    lpp.addRelativeHumidity(ch, sample.humidity);
+    lpp.addBarometricPressure(ch, sample.airPressure);
+    lpp.addConcentration(ch, sample.pm2_5);
+    lpp.addAnalogInput(ch, sample.pm10);
+    lpp.addDistance(ch, sample.windSpeed);
+    lpp.addDirection(ch, sample.windAngle);
+    lpp.addLuminosity(ch, sample.luminosity);
+    lpp.addGenericSensor(ch, sample.noiseDb);
+    lpp.addUnixTime(ch, sample.timestamp);
+  }
+}
+#endif
+
 // ============================================================
 // Sensor descriptor table
 //
@@ -515,6 +544,9 @@ static const SensorDef SENSOR_TABLE[] = {
 #if ENV_INCLUDE_RAK12035
   { TELEM_RAK12035_ADDRESS,"RAK12035",     init_rak12035, query_rak12035 },
 #endif
+#if ENV_INCLUDE_SEN0658
+  { TELEM_SEN0658_ADDRESS, "SEN0658",      init_sen0658, query_sen0658 },
+#endif
   { 0, nullptr, nullptr, nullptr }  // sentinel — keeps the array non-empty
 };
 
@@ -527,7 +559,8 @@ static const size_t SENSOR_TABLE_SIZE = (sizeof(SENSOR_TABLE) / sizeof(SENSOR_TA
 // crashes caused by absent or misbehaving hardware.
 // ============================================================
 
-bool EnvironmentSensorManager::begin() {
+bool EnvironmentSensorManager::begin(FILESYSTEM* fs) {
+  _fs = fs;
   #if ENV_INCLUDE_GPS
   #ifdef RAK_WISBLOCK_GPS
   rakGPSInit();
@@ -545,6 +578,10 @@ bool EnvironmentSensorManager::begin() {
   Wire1.begin(ENV_PIN_SDA, ENV_PIN_SCL, 100000);
     #endif
   MESH_DEBUG_PRINTLN("Second I2C initialized on pins SDA: %d SCL: %d", ENV_PIN_SDA, ENV_PIN_SCL);
+  #endif
+
+  #if ENV_INCLUDE_SEN0658
+  if (_fs) SEN0658.loadPrefs(_fs);
   #endif
 
   // Scan the I2C bus before touching any sensor library.
@@ -602,6 +639,9 @@ int EnvironmentSensorManager::getNumSettings() const {
   #if ENV_INCLUDE_GPS
     if (gps_detected) settings++;  // only show GPS setting if GPS is detected
   #endif
+  #if ENV_INCLUDE_SEN0658
+    settings += SEN0658.getNumSettings();
+  #endif
   return settings;
 }
 
@@ -612,17 +652,31 @@ const char* EnvironmentSensorManager::getSettingName(int i) const {
       return "gps";
     }
   #endif
+  #if ENV_INCLUDE_SEN0658
+    int local = i - settings;
+    if (local >= 0 && local < SEN0658.getNumSettings()) {
+      return SEN0658.getSettingName(local);
+    }
+    settings += SEN0658.getNumSettings();
+  #endif
   return NULL;
 }
 
-const char* EnvironmentSensorManager::getSettingValue(int i) const {
+int EnvironmentSensorManager::getSettingValue(int i, char* buf, int bufLen) const {
   int settings = 0;
   #if ENV_INCLUDE_GPS
     if (gps_detected && i == settings++) {
-      return gps_active ? "1" : "0";
+      return snprintf(buf, bufLen, "%s", gps_active ? "1" : "0");
     }
   #endif
-  return NULL;
+  #if ENV_INCLUDE_SEN0658
+    int local = i - settings;
+    if (local >= 0 && local < SEN0658.getNumSettings()) {
+      return SEN0658.getSettingValue(local, buf, bufLen);
+    }
+    settings += SEN0658.getNumSettings();
+  #endif
+  return 0;
 }
 
 bool EnvironmentSensorManager::setSettingValue(const char* name, const char* value) {
@@ -638,6 +692,12 @@ bool EnvironmentSensorManager::setSettingValue(const char* name, const char* val
   if (strcmp(name, "gps_interval") == 0) {
     uint32_t interval_seconds = atoi(value);
     gps_update_interval_sec = interval_seconds > 0 ? interval_seconds : 1;
+    return true;
+  }
+  #endif
+  #if ENV_INCLUDE_SEN0658
+  if (SEN0658.setSettingValue(name, value)) {
+    if (_fs) SEN0658.savePrefs(_fs);
     return true;
   }
   #endif
@@ -798,6 +858,17 @@ void EnvironmentSensorManager::stop_gps() {
   MESH_DEBUG_PRINTLN("Stop GPS is N/A on this board. Actual GPS state unchanged");
   #endif
 }
+#endif
+
+bool EnvironmentSensorManager::hasPendingWork() {
+  #if ENV_INCLUDE_SEN0658
+  if(SEN0658.hasPendingWork()) {
+    return true;
+  }
+  #endif
+
+  return false;
+}
 
 void EnvironmentSensorManager::loop() {
   static long next_gps_update = 0;
@@ -830,5 +901,8 @@ void EnvironmentSensorManager::loop() {
     next_gps_update = millis() + (gps_update_interval_sec * 1000);
   }
   #endif
+
+  #if ENV_INCLUDE_SEN0658
+  SEN0658.loop();
+  #endif
 }
-#endif
