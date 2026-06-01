@@ -44,6 +44,20 @@ void genericBuzzer::shutdown() {
     play(shutdown_song);
 }
 
+void genericBuzzer::playToggle(int count, bool enabled) {
+    static const char *notes[] = {"c", "e", "g", "c7", "e7", "g7"};
+    const int max_notes = (int)(sizeof(notes) / sizeof(notes[0]));
+    if (count < 1) count = 1;
+    if (count > max_notes) count = max_notes;
+    char melody[64];
+    int n = snprintf(melody, sizeof(melody), "Tg:d=16,o=6,b=200:");
+    for (int i = 0; i < count && n < (int)sizeof(melody); i++) {
+        int idx = enabled ? i : (count - 1 - i);
+        n += snprintf(melody + n, sizeof(melody) - n, "%s%s", i ? "," : "", notes[idx]);
+    }
+    play(melody);
+}
+
 void genericBuzzer::quiet(bool buzzer_state) {
     _is_quiet = buzzer_state;
 #ifdef PIN_BUZZER_EN
