@@ -50,7 +50,8 @@ void genericBuzzer::playToggle(int count, bool enabled) {
     if (count < 1) count = 1;
     if (count > max_notes) count = max_notes;
     char melody[64];
-    int n = snprintf(melody, sizeof(melody), "Tg:d=16,o=6,b=200:");
+    // d=8 (eighths) at b=180 -> ~166 ms per note, audible on small piezos.
+    int n = snprintf(melody, sizeof(melody), "Tg:d=8,o=6,b=180:");
     for (int i = 0; i < count && n < (int)sizeof(melody); i++) {
         int idx = enabled ? i : (count - 1 - i);
         n += snprintf(melody + n, sizeof(melody) - n, "%s%s", i ? "," : "", notes[idx]);

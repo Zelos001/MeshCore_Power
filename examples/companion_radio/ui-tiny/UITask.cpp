@@ -482,7 +482,7 @@ switch(t){
     buzzer.play("ack:d=32,o=8,b=120:c");
     break;
   case UIEventType::advertSent:
-    buzzer.play("Advert:d=16,o=6,b=240:c,e,g,c7");
+    buzzer.play("Advert:d=8,o=6,b=180:c,e,g,c7");
     break;
   case UIEventType::roomMessage:
   case UIEventType::newContactMessage:
