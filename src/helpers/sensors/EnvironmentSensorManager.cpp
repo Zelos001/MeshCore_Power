@@ -181,6 +181,7 @@ class RAK12500LocationProvider : public LocationProvider {
   int _sats = 0;
   long _epoch = 0;
   bool _fix = false;
+  unsigned long _next_poll = 0;
 public:
   long getLatitude() override { return _lat; }
   long getLongitude() override { return _lng; }
@@ -193,26 +194,45 @@ public:
   void begin() override { }
   void stop() override { }
   void loop() override {
+    // Throttle the I²C poll to ~1 Hz. The getXxx() calls below each issue a
+    // synchronous ublox poll that blocks up to its maxWait; the GNSS solution only
+    // updates at the 1 Hz navigation rate (setMeasurementRate(1000)), so polling on
+    // every main-loop iteration just burns the loop on redundant I²C round-trips —
+    // that stall is what made the AIN1 button sluggish and drop double-clicks.
+    // Polling once per nav epoch keeps the fix/time fresh while leaving the loop
+    // free for button sampling the rest of the time.
+    if (millis() < _next_poll) {
+      return;
+    }
+    _next_poll = millis() + 1000;
+
     // The numeric arg is maxWait (ms) for the I²C poll, not a field index.
     // The previous 2/8 ms values were below the ublox response window, so polls
     // routinely timed out and returned stale/garbage PVT data (observed: random
     // wrong-hemisphere longitudes despite getGnssFixOk() returning true).
-    // 250 ms matches the SparkFun library's typical response time.
-    //
+    // 250 ms is a ceiling; a responsive module returns well before that. getPVT()
+    // does the single poll here, then every getter reads that same cached packet
+    // (passing no maxWait, so they never re-poll). Gating all reads on getPVT()
+    // succeeding matters: if the poll times out, a getter with a stale cache would
+    // otherwise fire its own poll at the library default (~1100 ms) and stall hard.
+    if (!ublox_GNSS.getPVT(250)) {
+      return;   // no response this tick — keep last reported values
+    }
+
     // Require BOTH gnssFixOK (DOP/accuracy mask passed) AND fixType==3 (3D fix).
     // Ublox reports gnssFixOK=true with bogus coords during cold start (e.g. an
     // unfixed module on first boot reporting coordinates from factory almanac);
     // requiring fixType==3 filters those out.
-    if (ublox_GNSS.getGnssFixOk(250) && ublox_GNSS.getFixType(250) == 3) {
+    if (ublox_GNSS.getGnssFixOk() && ublox_GNSS.getFixType() == 3) {
       _fix = true;
-      _lat = ublox_GNSS.getLatitude(250) / 10;
-      _lng = ublox_GNSS.getLongitude(250) / 10;
-      _alt = ublox_GNSS.getAltitudeMSL(250);   // height above mean sea level, not ellipsoid
-      _sats = ublox_GNSS.getSIV(250);
+      _lat = ublox_GNSS.getLatitude() / 10;
+      _lng = ublox_GNSS.getLongitude() / 10;
+      _alt = ublox_GNSS.getAltitudeMSL();   // height above mean sea level, not ellipsoid
+      _sats = ublox_GNSS.getSIV();
     } else {
       _fix = false;
     }
-    _epoch = ublox_GNSS.getUnixEpoch(250);
+    _epoch = ublox_GNSS.getUnixEpoch();
   }
   bool isEnabled() override { return true; }
 };
