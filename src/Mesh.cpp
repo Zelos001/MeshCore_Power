@@ -72,7 +72,54 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
     return ACTION_RELEASE;
   }
 
-  if (pkt->isRouteDirect() && pkt->getPathHashCount() > 0) {
+  if (pkt->isRouteDirect()) {
+    const bool is_next_hop = (pkt->getPathHashCount() > 0) && self_id.isHashMatch(pkt->path, pkt->getPathHashSize());
+    // Check if this is a retransmit of a packet we recently sent;
+    // if yes, the next hop successfully forwarded it, so remove our scheduled retransmit from outbound queue.
+    // This runs for ANY path_len (including 0 = downstream relay forwarding to final destination),
+    // so that we cancel pending retries as soon as we overhear a relay forwarding our packet.
+
+    // Only do this when the packet is NOT addressed to us as next hop to avoid dropping fresh packets.
+    if (!is_next_hop) {
+      pkt->calculatePacketHash();
+      const uint8_t *recv_hash = pkt->hash;
+
+      // First check the current outbound packet being prepared/sent
+      if (outbound && outbound->sending_attempts > 0 && outbound->isRouteDirect()) {
+        const uint8_t *outbound_hash = outbound->calculatePacketHash();
+        if (memcmp(recv_hash, outbound_hash, MAX_HASH_SIZE) == 0) {
+          MESH_DEBUG_PRINTLN(
+              "%s Mesh::onRecvPacket(): downstream forwarded current outbound, canceling (attempt=%d)",
+              getLogDateTime(), outbound->sending_attempts);
+          releasePacket(outbound);
+          outbound = NULL;
+          return ACTION_RELEASE;
+        }
+      }
+
+      if (_mgr->getOutboundTotal() > 0) {
+        for (int i = _mgr->getOutboundTotal() - 1; i >= 0; i--) {
+          Packet *queued_pkt = _mgr->getOutboundByIdx(i);
+          if (queued_pkt && queued_pkt->sending_attempts > 0 && queued_pkt->isRouteDirect()) {
+            const uint8_t *queued_hash = queued_pkt->calculatePacketHash();
+            if (memcmp(recv_hash, queued_hash, MAX_HASH_SIZE) == 0) {
+              MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): downstream forwarded packet detected, canceling "
+                                 "retransmit (attempt=%d)",
+                                 getLogDateTime(), queued_pkt->sending_attempts);
+              Packet *removed = _mgr->removeOutboundByIdx(i);
+              if (removed) _mgr->free(removed);
+              return ACTION_RELEASE; // don't process further: confirmed successful forwarding
+            }
+          }
+        }
+      }
+
+    }
+
+    // For path_len=0 direct packets, no further path-based processing applies;
+    // fall through to general switch-case handling (e.g. ACK delivery via onAckRecv).
+    if (pkt->path_len < PATH_HASH_SIZE) goto direct_path_done;
+
     // check for 'early received' ACK
     if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK) {
       int i = 0;
@@ -83,7 +130,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       }
     }
 
-    if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize()) && allowPacketForward(pkt)) {
+    if (is_next_hop && allowPacketForward(pkt)) {
       if (pkt->getPayloadType() == PAYLOAD_TYPE_MULTIPART) {
         return forwardMultipartDirect(pkt);
       } else if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK) {
@@ -97,6 +144,8 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       if (!_tables->hasSeen(pkt)) {
         removeSelfFromPath(pkt);
 
+        MESH_DEBUG_PRINTLN("Mesh::onRecvPacket(): prepare to repeat packet %s", pkt->getHashHex());
+
         uint32_t d = getDirectRetransmitDelay(pkt);
         return ACTION_RETRANSMIT_DELAYED(0, d);  // Routed traffic is HIGHEST priority 
       }
@@ -104,6 +153,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
     return ACTION_RELEASE;   // this node is NOT the next hop (OR this packet has already been forwarded), so discard.
   }
 
+direct_path_done:
   if (pkt->isRouteFlood() && filterRecvFloodPacket(pkt)) return ACTION_RELEASE;
 
   DispatcherAction action = ACTION_RELEASE;
@@ -275,7 +325,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       }
       break;
     }
-    case PAYLOAD_TYPE_RAW_CUSTOM: {
+   case PAYLOAD_TYPE_RAW_CUSTOM: {
       if (pkt->isRouteDirect() && !_tables->hasSeen(pkt)) {
         onRawDataRecv(pkt);
         //action = routeRecvPacket(pkt);    don't flood route these (yet)

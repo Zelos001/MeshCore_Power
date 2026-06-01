@@ -1,13 +1,19 @@
 #include "Packet.h"
+#include "Utils.h"
 #include <string.h>
 #include <SHA256.h>
 
 namespace mesh {
 
+static const uint8_t ZERO_HASH[MAX_HASH_SIZE] = { 0 };
+
 Packet::Packet() {
   header = 0;
   path_len = 0;
   payload_len = 0;
+  memcpy(hash, ZERO_HASH, MAX_HASH_SIZE);
+  memset(hash_hex, 0, sizeof(hash_hex));
+  sending_attempts = 0;
 }
 
 bool Packet::isValidPathLen(uint8_t path_len) {
@@ -38,15 +44,24 @@ int Packet::getRawLength() const {
   return 2 + getPathByteLen() + payload_len + (hasTransportCodes() ? 4 : 0);
 }
 
-void Packet::calculatePacketHash(uint8_t* hash) const {
-  SHA256 sha;
-  uint8_t t = getPayloadType();
-  sha.update(&t, 1);
-  if (t == PAYLOAD_TYPE_TRACE) {
-    sha.update(&path_len, sizeof(path_len));   // CAVEAT: TRACE packets can revisit same node on return path
+uint8_t *Packet::calculatePacketHash() const {
+  if (memcmp(this->hash, ZERO_HASH, MAX_HASH_SIZE) == 0) {
+    SHA256 sha;
+    uint8_t t = getPayloadType();
+    sha.update(&t, 1);
+    if (t == PAYLOAD_TYPE_TRACE) {
+      sha.update(&path_len, sizeof(path_len)); // CAVEAT: TRACE packets can revisit same node on return path
+    }
+    sha.update(payload, payload_len);
+    sha.finalize((uint8_t *)this->hash, MAX_HASH_SIZE);
   }
-  sha.update(payload, payload_len);
-  sha.finalize(hash, MAX_HASH_SIZE);
+  return (uint8_t *)this->hash;
+}
+
+const char* Packet::getHashHex() const {
+  calculatePacketHash();
+  Utils::toHex(hash_hex, hash, MAX_HASH_SIZE);
+  return hash_hex;
 }
 
 uint8_t Packet::writeTo(uint8_t dest[]) const {
