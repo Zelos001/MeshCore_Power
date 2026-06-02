@@ -829,7 +829,7 @@ void UITask::loop() {
 #endif
 
 #ifdef AUTO_SHUTDOWN_MILLIVOLTS
-  if (millis() > next_batt_chck) {
+  if (millis() > next_batt_check) {
     uint16_t milliVolts = getBattMilliVolts();
     if (milliVolts > 0 && milliVolts < AUTO_SHUTDOWN_MILLIVOLTS) {
 
@@ -849,7 +849,7 @@ void UITask::loop() {
       shutdown();
 
     }
-    next_batt_chck = millis() + 8000;
+    next_batt_check = millis() + 8000;
   }
 #endif
 }

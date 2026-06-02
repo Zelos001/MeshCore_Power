@@ -755,7 +755,7 @@ Allow the browser user on it:
 10. Select the device you want to update. If the device you want to update is not on the list, try enabling`OTA` on the device again
 11. If the device is not found, enable `Force Scanning` in the DFU app
 12. Tab the `Upload` to begin OTA update
-13. If it fails, try turning off and on Bluetooth on your phone.  If that doesn't work, try rebooting your phone.  If you keep getting failures at the "Enabling Bootloader" step, try forgetting the NRF board in your IOS or Andriod device's bluetooth settings and re-pair it through the DFU app.
+13. If it fails, try turning off and on Bluetooth on your phone.  If that doesn't work, try rebooting your phone.  If you keep getting failures at the "Enabling Bootloader" step, try forgetting the NRF board in your IOS or Android device's bluetooth settings and re-pair it through the DFU app.
 14. Wait for the update to complete.  It can take a few minutes.   
 15. It is strongly recommended that you install and use the OTAFIX bootloader at https://github.com/oltaco/Adafruit_nRF52_Bootloader_OTAFIX. 
 16. To update a companion node over OTA, it must be running companion firmware v1.15 or greater.   

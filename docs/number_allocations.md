@@ -1,6 +1,6 @@
 # Number Allocations
 
-This document lists unique numbers/identifiers used in various MeshCore protcol payloads.
+This document lists unique numbers/identifiers used in various MeshCore protocol payloads.
 
 # Group Data Types
 
