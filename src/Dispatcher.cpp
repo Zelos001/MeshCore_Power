@@ -147,7 +147,22 @@ void Dispatcher::loop() {
   checkRecv();
   checkSend();
 
-  // Do noise floor calibration LAST, when no critical operations are pending
+  // Noise floor calibration is placed here intentionally – at the very end of loop(),
+  // after checkRecv() and checkSend() have completed. This avoids two classes of problem:
+  //
+  // 1. Calibration disrupts radio reception: triggerNoiseFloorCalibrate() temporarily
+  //    takes the radio out of normal RX mode. Running it at the top of loop() (the
+  //    previous location) risked aborting an incoming packet that had not yet been read
+  //    out by _radio->loop() / checkRecv().
+  //
+  // 2. Interference with outbound retransmissions: the repeated-sending feature queues
+  //    direct-routed packets for re-transmission (resendPacket()). Calibrating while
+  //    packets are pending in the outbound queue would disrupt those time-sensitive
+  //    transmissions. The guard '_mgr->getOutboundCount() == 0' ensures calibration
+  //    is deferred until the queue is empty.
+  //
+  // Calibration is a low-priority background task and must only run when the radio is
+  // demonstrably idle.
   if (millisHasNowPassed(next_floor_calib_time)) {
     if (!_radio->isReceiving() && _mgr->getOutboundCount(_ms->getMillis()) == 0) {
       _radio->triggerNoiseFloorCalibrate(getInterferenceThreshold());
@@ -199,6 +214,14 @@ bool Dispatcher::tryParsePacket(Packet* pkt, const uint8_t* raw, int len) {
 }
 
 void Dispatcher::checkRecv() {
+  // Drain the entire RX buffer in one loop() pass instead of processing only a single
+  // packet per call. This is critical for the repeated-sending / retransmit-cancellation
+  // mechanism: when a downstream relay forwards our packet we must detect that forwarding
+  // echo (via hash comparison in onRecvPacket()) before the scheduled retransmit timer
+  // fires. With the old single-read design the echo might not be consumed until a later
+  // loop() iteration, by which time the retransmit had already been sent unnecessarily.
+  // Draining all pending packets here minimises that race window.
+  // As a secondary benefit this prevents RX-FIFO overflow under high packet load.
   while (true) {
 
     Packet *pkt = nullptr;

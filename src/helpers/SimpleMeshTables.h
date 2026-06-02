@@ -37,6 +37,21 @@ public:
 #endif
 
   bool hasSeen(const mesh::Packet* packet) override {
+    // ACK packets receive dedicated deduplication for three reasons:
+    //
+    // 1. The first 4 payload bytes (ack_crc) already uniquely identify the ACK – they
+    //    are the CRC of the original packet being acknowledged. A direct uint32_t
+    //    comparison is therefore both correct and far cheaper than computing a full
+    //    SHA256 via calculatePacketHash() (which the general path below would do).
+    //
+    // 2. With repeated sending (max_resend_attempts > 0) and multi-ACKs the same ACK
+    //    can arrive multiple times. Storing each occurrence in the shared _hashes[]
+    //    table (160 entries) would evict entries needed for long-lived flood-packet
+    //    deduplication. The dedicated _acks[] table (MAX_PACKET_ACKS entries) keeps
+    //    ACK and flood deduplication budgets separate.
+    //
+    // 3. clear() for ACKs is a simple 4-byte linear scan; using the general table
+    //    would require SHA256 + a full memcmp loop over MAX_PACKET_HASHES entries.
     if (packet->getPayloadType() == PAYLOAD_TYPE_ACK) {
       uint32_t ack;
       memcpy(&ack, packet->payload, 4);
