@@ -22,7 +22,6 @@ KissModem::KissModem(Stream& serial, mesh::LocalIdentity& identity, mesh::RNG& r
   _getStatsCallback = nullptr;
   _config = {0, 0, 0, 0, 0};
   _signal_report_enabled = true;
-  _tx_write_aborted = false;
 }
 
 void KissModem::begin() {
@@ -33,58 +32,60 @@ void KissModem::begin() {
   _tx_state = TX_IDLE;
 }
 
-void KissModem::beginFrameWrite() {
-  _tx_write_aborted = false;
+size_t KissModem::escapedLength(uint8_t b) const {
+  return (b == KISS_FEND || b == KISS_FESC) ? 2 : 1;
 }
 
-void KissModem::rawWrite(uint8_t b) {
-  /* A frame is sent all-or-nothing; once we start dropping, swallow the rest so
-     we never emit a truncated KISS frame. */
-  if (_tx_write_aborted) return;
-
-  /* Non-blocking: if the TX buffer is full, drop this frame instead of waiting.
-     loop() is single-threaded and also services RX and the radio, so it must not
-     stall on a host that has stopped reading. Writing only when space is free
-     keeps the underlying write() from blocking; a dropped reply is harmless as
-     the host retries. */
-  if (_serial.availableForWrite() <= 0) {
-    _tx_write_aborted = true;
-    return;
+size_t KissModem::escapedLength(const uint8_t* data, size_t len) const {
+  size_t total = 0;
+  for (size_t i = 0; i < len; i++) {
+    total += escapedLength(data[i]);
   }
-  _serial.write(b);
+  return total;
+}
+
+bool KissModem::canWriteFrame(size_t total_len) const {
+  int available = _serial.availableForWrite();
+  return available > 0 && (size_t)available >= total_len;
+}
+
+void KissModem::writeEscapedFrame(const uint8_t* prefix, size_t prefix_len, const uint8_t* data, uint16_t len) {
+  // All-or-nothing: only write if the whole escaped frame fits, so loop() never blocks and frames are never truncated
+  size_t total_len = 2;  // frame delimiters
+  total_len += escapedLength(prefix, prefix_len);
+  total_len += escapedLength(data, len);
+  if (!canWriteFrame(total_len)) return;
+
+  _serial.write(KISS_FEND);
+  for (size_t i = 0; i < prefix_len; i++) {
+    writeByte(prefix[i]);
+  }
+  for (uint16_t i = 0; i < len; i++) {
+    writeByte(data[i]);
+  }
+  _serial.write(KISS_FEND);
 }
 
 void KissModem::writeByte(uint8_t b) {
   if (b == KISS_FEND) {
-    rawWrite(KISS_FESC);
-    rawWrite(KISS_TFEND);
+    _serial.write(KISS_FESC);
+    _serial.write(KISS_TFEND);
   } else if (b == KISS_FESC) {
-    rawWrite(KISS_FESC);
-    rawWrite(KISS_TFESC);
+    _serial.write(KISS_FESC);
+    _serial.write(KISS_TFESC);
   } else {
-    rawWrite(b);
+    _serial.write(b);
   }
 }
 
 void KissModem::writeFrame(uint8_t type, const uint8_t* data, uint16_t len) {
-  beginFrameWrite();
-  rawWrite(KISS_FEND);
-  writeByte(type);
-  for (uint16_t i = 0; i < len; i++) {
-    writeByte(data[i]);
-  }
-  rawWrite(KISS_FEND);
+  uint8_t prefix[] = { type };
+  writeEscapedFrame(prefix, sizeof(prefix), data, len);
 }
 
 void KissModem::writeHardwareFrame(uint8_t sub_cmd, const uint8_t* data, uint16_t len) {
-  beginFrameWrite();
-  rawWrite(KISS_FEND);
-  writeByte(KISS_CMD_SETHARDWARE);
-  writeByte(sub_cmd);
-  for (uint16_t i = 0; i < len; i++) {
-    writeByte(data[i]);
-  }
-  rawWrite(KISS_FEND);
+  uint8_t prefix[] = { KISS_CMD_SETHARDWARE, sub_cmd };
+  writeEscapedFrame(prefix, sizeof(prefix), data, len);
 }
 
 void KissModem::writeHardwareError(uint8_t error_code) {

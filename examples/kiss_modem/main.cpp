@@ -107,11 +107,11 @@ void setup() {
 #endif
   modem = new KissModem(Serial1, identity, rng, radio_driver, board, sensors);
 #else
+#if defined(ESP32) && (ARDUINO_USB_MODE == 1)
+  Serial.setTxBufferSize(KISS_TX_BUFFER_SIZE);  // HWCDC ring must fit a whole KISS frame; set before begin()
+#endif
   Serial.begin(115200);
 #if defined(ESP32)
-  /* Cap how long a USB-CDC write blocks waiting for the host to drain the TX
-     buffer. loop() is single-threaded, so an unbounded wait when the host stalls
-     would also freeze RX and radio servicing. */
   Serial.setTxTimeoutMs(KISS_WRITE_TIMEOUT_MS);
 #endif
   uint32_t start = millis();

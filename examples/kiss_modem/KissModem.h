@@ -28,10 +28,11 @@
 #define KISS_DEFAULT_SLOTTIME    10
 #define KISS_TX_TIMEOUT_FACTOR   3/2   // 1.5x estimated airtime
 
-/* Upper bound (ms) on how long a serial write may wait for the host to drain the
-   TX buffer. Keeps a stalled USB-CDC host from freezing the single-threaded loop();
-   UART transports drain via FIFO and never reach this. */
+// Max ms a USB-CDC write may block on a stalled host, so loop() never freezes (UART drains via FIFO, never hits this)
 #define KISS_WRITE_TIMEOUT_MS    50
+
+// Must fit a full escaped DATA frame (~514B) for all-or-nothing writes; 256B default drops max-size RX frames
+#define KISS_TX_BUFFER_SIZE      1024
 
 #define HW_CMD_GET_IDENTITY      0x01
 #define HW_CMD_GET_RANDOM        0x02
@@ -136,10 +137,10 @@ class KissModem {
   RadioConfig _config;
   bool _signal_report_enabled;
 
-  bool _tx_write_aborted;       // set when the current frame is dropped (no TX buffer space)
-
-  void beginFrameWrite();       // reset per-frame abort state
-  void rawWrite(uint8_t b);     // non-blocking write: drops the frame rather than stalling loop()
+  size_t escapedLength(uint8_t b) const;
+  size_t escapedLength(const uint8_t* data, size_t len) const;
+  bool canWriteFrame(size_t total_len) const;  // true only if the whole frame fits the TX buffer now
+  void writeEscapedFrame(const uint8_t* prefix, size_t prefix_len, const uint8_t* data, uint16_t len);
   void writeByte(uint8_t b);
   void writeFrame(uint8_t type, const uint8_t* data, uint16_t len);
   void writeHardwareFrame(uint8_t sub_cmd, const uint8_t* data, uint16_t len);
