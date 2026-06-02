@@ -43,6 +43,13 @@ void AutoDiscoverRTCClock::begin(TwoWire& wire) {
 
   if (i2c_probe(wire, PCF8563_ADDRESS)) {
     rtc_8563_success = rtc_8563.begin(&wire);
+    if (rtc_8563_success) {
+      if (rtc_8563.lostPower()) {
+        // only set time if RTC lost power, otherwise leave it alone
+        // (e.g. if battery is dead but still keeping time, or if user has set to a specific time)
+        rtc_8563.adjust(DateTime(2024, 5, 15, 20, 50, 0)); // set date and time as with CMD clkreboot: (15 May 2024, 8:50pm)
+      }
+    }
   }
 
   if (i2c_probe(wire, RX8130CE_ADDRESS)) {
@@ -81,7 +88,7 @@ uint32_t AutoDiscoverRTCClock::getCurrentTime() {
   return _fallback->getCurrentTime();
 }
 
-void AutoDiscoverRTCClock::setCurrentTime(uint32_t time) { 
+void AutoDiscoverRTCClock::setCurrentTime(uint32_t time) {
   if (ds3231_success) {
     rtc_3231.adjust(DateTime(time));
   } else if (rv3028_success) {

@@ -14,7 +14,7 @@
 #define USE_LFXO    // 32.768 kHz crystal oscillator
 #define VARIANT_MCK (64000000ul)
 
-#define WIRE_INTERFACES_COUNT 	(2)
+#define WIRE_INTERFACES_COUNT 	(1) // #define WIRE_INTERFACES_COUNT 	(2) // Enable if using I2C bus 1
 
 ////////////////////////////////////////////////////////////////////////////////
 // Power
@@ -49,14 +49,14 @@
 
 
 // I2C pin definition
-
-#define PIN_WIRE_SDA (0 + 7)
-#define PIN_WIRE_SCL (0 + 8)
+// I2C bus 0 (default)
+#define PIN_WIRE_SDA            (32 + 4) // P1.04 RTC_SDA
+#define PIN_WIRE_SCL            (32 + 2) // P1.02 RTC_SCL
 
 // I2C bus 1
-// Available on header pins, for general use
-#define PIN_WIRE1_SDA (0 + 4)
-#define PIN_WIRE1_SCL (0 + 27)
+// not used by default, but can be used if I2C bus 1 is enabled.
+// #define PIN_WIRE1_SDA           (0 + 4)
+// #define PIN_WIRE1_SCL           (0 + 27)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Builtin LEDs
