@@ -16,6 +16,31 @@ void halt() {
   while (1) ;
 }
 
+#ifndef GPIO_CONTACT_ACTIVE_LOW
+#define GPIO_CONTACT_ACTIVE_LOW 1
+#endif
+#ifndef GPIO_CONTACT_COOLDOWN_MS
+#define GPIO_CONTACT_COOLDOWN_MS 5000
+#endif
+#ifndef GPIO_CONTACT_OPEN_TEXT
+#define GPIO_CONTACT_OPEN_TEXT "GPIO contact opened"
+#endif
+#ifndef GPIO_CONTACT_CLOSED_TEXT
+#define GPIO_CONTACT_CLOSED_TEXT "GPIO contact closed"
+#endif
+
+#if defined(ENABLE_GPIO_CONTACT_INPUT) && ENABLE_GPIO_CONTACT_INPUT == 1
+  #ifndef GPIO_CONTACT_PIN
+    #error "GPIO_CONTACT_PIN must be defined when ENABLE_GPIO_CONTACT_INPUT=1"
+  #endif
+static bool gpio_contact_state = false;
+static int gpio_contact_last_raw = HIGH;
+static unsigned long gpio_contact_debounce_until = 0;
+static unsigned long gpio_contact_last_change = 0;
+static bool gpio_contact_initialized = false;
+static const unsigned long GPIO_CONTACT_DEBOUNCE_MS = 50;
+#endif
+
 static char command[MAX_POST_TEXT_LEN+1];
 
 void setup() {
@@ -23,6 +48,19 @@ void setup() {
   delay(1000);
 
   board.begin();
+
+#if defined(ENABLE_GPIO_CONTACT_INPUT) && ENABLE_GPIO_CONTACT_INPUT == 1
+  pinMode(GPIO_CONTACT_PIN, INPUT_PULLUP);
+  int raw = digitalRead(GPIO_CONTACT_PIN);
+  gpio_contact_last_raw = raw;
+  gpio_contact_state = (raw == (GPIO_CONTACT_ACTIVE_LOW ? LOW : HIGH));
+  gpio_contact_debounce_until = millis() + GPIO_CONTACT_DEBOUNCE_MS;
+  gpio_contact_last_change = millis();
+  gpio_contact_initialized = true;
+  #if defined(ENABLE_GPIO_CONTACT_DEBUG) && ENABLE_GPIO_CONTACT_DEBUG == 1
+    Serial.printf("GPIO contact enabled: pin=%d active_low=%d initial_raw=%d initial_state=%s\n", (int)GPIO_CONTACT_PIN, (int)GPIO_CONTACT_ACTIVE_LOW, raw==LOW?0:1, gpio_contact_state?"closed":"opened");
+  #endif
+#endif
 
 #ifdef DISPLAY_CLASS
   if (display.begin()) {
@@ -101,6 +139,7 @@ void loop() {
   if (len > 0 && command[len - 1] == '\r') {  // received complete line
     command[len - 1] = 0;  // replace newline with C string null terminator
     char reply[160];
+    memset(reply, 0, sizeof(reply));
     the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
     if (reply[0]) {
       Serial.print("  -> "); Serial.println(reply);
@@ -108,6 +147,31 @@ void loop() {
 
     command[0] = 0;  // reset command buffer
   }
+
+#if defined(ENABLE_GPIO_CONTACT_INPUT) && ENABLE_GPIO_CONTACT_INPUT == 1
+  int gpio_raw = digitalRead(GPIO_CONTACT_PIN);
+  bool gpio_active = (gpio_raw == (GPIO_CONTACT_ACTIVE_LOW ? LOW : HIGH));
+
+  if (gpio_raw != gpio_contact_last_raw) {
+    gpio_contact_last_raw = gpio_raw;
+    gpio_contact_debounce_until = millis() + GPIO_CONTACT_DEBOUNCE_MS;
+    #if defined(ENABLE_GPIO_CONTACT_DEBUG) && ENABLE_GPIO_CONTACT_DEBUG == 1
+      Serial.printf("GPIO contact raw changed: pin=%d raw=%d active=%d\n", (int)GPIO_CONTACT_PIN, gpio_raw==LOW?0:1, gpio_active?1:0);
+    #endif
+  }
+
+  if (gpio_contact_initialized && millis() >= gpio_contact_debounce_until &&
+      gpio_active != gpio_contact_state &&
+      millis() - gpio_contact_last_change >= GPIO_CONTACT_COOLDOWN_MS) {
+    gpio_contact_state = gpio_active;
+    gpio_contact_last_change = millis();
+    #if defined(ENABLE_GPIO_CONTACT_DEBUG) && ENABLE_GPIO_CONTACT_DEBUG == 1
+      const char* msg = (gpio_contact_state ? GPIO_CONTACT_CLOSED_TEXT : GPIO_CONTACT_OPEN_TEXT);
+      Serial.print("GPIO contact posting: "); Serial.println(msg);
+    #endif
+    the_mesh.addSystemPost(gpio_contact_state ? GPIO_CONTACT_CLOSED_TEXT : GPIO_CONTACT_OPEN_TEXT);
+  }
+#endif
 
   the_mesh.loop();
   sensors.loop();
