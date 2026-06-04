@@ -122,6 +122,7 @@ void ThinkNodeM4Board::powerOff() {
   digitalWrite(M4_PIN_POWER_EN, LOW);
   digitalWrite(M4_VEXT_ENABLE, HIGH);
 #ifdef PIN_BUTTON1
+  delay(1000);
   nrf_gpio_cfg_sense_input(PIN_BUTTON1, NRF_GPIO_PIN_PULLUP, NRF_GPIO_PIN_SENSE_LOW);
 #endif
   sd_power_system_off();
