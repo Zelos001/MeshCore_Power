@@ -2,15 +2,15 @@
 #include <bluefruit.h>
 
 // ── Power enable pins ─────────────────────────────────────────────────────────
-#define M4_PIN_POWER_EN   (11)   // LR1110 radio power enable (active HIGH)
-#define M4_VEXT_ENABLE    (32)   // Peripheral power enable (active LOW)
+#define M4_PIN_POWER_EN   (11)
+#define M4_VEXT_ENABLE    (32)
 
 // ── Battery ADC (fallback) ────────────────────────────────────────────────────
 #define M4_VBAT_PIN       (2)
 #define M4_ADC_MAX        (4096.0f)
 #define M4_DIVIDER_COMP   (2.0f)
 
-// ── Battery serial interface (power bank management chip) ─────────────────────
+// ── Battery serial interface ──────────────────────────────────────────────────
 #define M4_BATT_SERIAL_BAUD  (4800)
 #define M4_BATT_START_BYTE   (0xFE)
 #define M4_BATT_END_BYTE     (0xFD)
@@ -18,10 +18,9 @@
 // ── Battery gauge LED pins ────────────────────────────────────────────────────
 #define M4_BATT_LED_1     (15)
 #define M4_BATT_LED_2     (17)
-#define M4_BATT_LED_3     (34)   // P1.02
-#define M4_BATT_LED_4     (36)   // P1.04
+#define M4_BATT_LED_3     (34)
+#define M4_BATT_LED_4     (36)
 
-// Voltage thresholds for 2x18650 in series (millivolts)
 #define M4_BATT_LED4_MV   (8000)
 #define M4_BATT_LED3_MV   (7400)
 #define M4_BATT_LED2_MV   (6900)
@@ -37,25 +36,29 @@ void ThinkNodeM4Board::updateBatteryLEDs(uint16_t mv) {
 }
 
 void ThinkNodeM4Board::readBatterySerial() {
+  // Non-blocking — return immediately if not enough data
   if (_batt_serial.available() < 6) return;
 
-  // Flush stale data, keep only the latest packet
+  // Flush stale data, keep only latest packet
   while (_batt_serial.available() > 11) {
     _batt_serial.read();
   }
 
-  // Find start byte
+  // Find start byte — non-blocking
   int tries = 0;
-  while (_batt_serial.read() != M4_BATT_START_BYTE) {
-    if (++tries > 10) return;
+  while (true) {
+    if (!_batt_serial.available()) return;
+    if (_batt_serial.read() == M4_BATT_START_BYTE) break;
+    if (++tries > 20) return;
   }
 
+  // Need 5 more bytes after start byte
+  if (_batt_serial.available() < 5) return;
+
   uint8_t data[6] = {0};
-  data[1] = _batt_serial.read();
-  data[2] = _batt_serial.read();
-  data[3] = _batt_serial.read();
-  data[4] = _batt_serial.read();
-  data[5] = _batt_serial.read();
+  for (int i = 1; i <= 5; i++) {
+    data[i] = _batt_serial.read();
+  }
 
   if (data[5] != M4_BATT_END_BYTE) return;
 
@@ -71,20 +74,13 @@ void ThinkNodeM4Board::begin() {
   pinMode(M4_PIN_POWER_EN, OUTPUT);
   digitalWrite(M4_PIN_POWER_EN, HIGH);
   pinMode(M4_VEXT_ENABLE, OUTPUT);
-  digitalWrite(M4_VEXT_ENABLE, LOW);   // active LOW
+  digitalWrite(M4_VEXT_ENABLE, LOW);
   delay(100);
 
   NRF52BoardDCDC::begin();
 
   // Start battery management serial
   _batt_serial.begin(M4_BATT_SERIAL_BAUD);
-
-  // Try to get an initial battery reading
-  for (int i = 0; i < 10; i++) {
-    delay(200);
-    readBatterySerial();
-    if (_batt_mv > 0) break;
-  }
 
   // Battery gauge LEDs
   pinMode(M4_BATT_LED_1, OUTPUT);
@@ -101,13 +97,13 @@ void ThinkNodeM4Board::begin() {
   digitalWrite(LED_PAIRING, LOW);
 #endif
 
-  updateBatteryLEDs(_batt_mv);
+  updateBatteryLEDs(0);
 }
 
 uint16_t ThinkNodeM4Board::getBattMilliVolts() {
   if (_batt_mv > 0) return _batt_mv;
 
-  // ADC fallback — reads battery voltage via resistor divider on PIN_A0
+  // ADC fallback
   analogReference(AR_INTERNAL_3_0);
   analogReadResolution(12);
   delay(5);
