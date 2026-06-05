@@ -16,6 +16,12 @@ void halt() {
   while (1) ;
 }
 
+#ifndef ENABLE_GPIO_CONTACT_INPUT
+#define ENABLE_GPIO_CONTACT_INPUT 0
+#endif
+#ifndef ENABLE_GPIO_CONTACT_DEBUG
+#define ENABLE_GPIO_CONTACT_DEBUG 0
+#endif
 #ifndef GPIO_CONTACT_ACTIVE_LOW
 #define GPIO_CONTACT_ACTIVE_LOW 1
 #endif
@@ -137,7 +143,7 @@ void loop() {
   }
 
   if (len > 0 && command[len - 1] == '\r') {  // received complete line
-    command[len - 1] = 0;  // replace newline with C string null terminator
+    command[len - 1] = 0;  // replace carriage return with C string null terminator
     char reply[160];
     memset(reply, 0, sizeof(reply));
     the_mesh.handleCommand(0, command, reply);  // NOTE: there is no sender_timestamp via serial!
@@ -155,21 +161,30 @@ void loop() {
   if (gpio_raw != gpio_contact_last_raw) {
     gpio_contact_last_raw = gpio_raw;
     gpio_contact_debounce_until = millis() + GPIO_CONTACT_DEBOUNCE_MS;
+
     #if defined(ENABLE_GPIO_CONTACT_DEBUG) && ENABLE_GPIO_CONTACT_DEBUG == 1
-      Serial.printf("GPIO contact raw changed: pin=%d raw=%d active=%d\n", (int)GPIO_CONTACT_PIN, gpio_raw==LOW?0:1, gpio_active?1:0);
+      Serial.printf("GPIO contact raw changed: pin=%d raw=%d active=%d\n",
+                    (int)GPIO_CONTACT_PIN,
+                    gpio_raw == LOW ? 0 : 1,
+                    gpio_active ? 1 : 0);
     #endif
   }
 
-  if (gpio_contact_initialized && millis() >= gpio_contact_debounce_until &&
+  if (gpio_contact_initialized &&
+      (long)(millis() - gpio_contact_debounce_until) >= 0 &&
       gpio_active != gpio_contact_state &&
       millis() - gpio_contact_last_change >= GPIO_CONTACT_COOLDOWN_MS) {
     gpio_contact_state = gpio_active;
     gpio_contact_last_change = millis();
+
+    const char* msg = gpio_contact_state ? GPIO_CONTACT_CLOSED_TEXT : GPIO_CONTACT_OPEN_TEXT;
+
     #if defined(ENABLE_GPIO_CONTACT_DEBUG) && ENABLE_GPIO_CONTACT_DEBUG == 1
-      const char* msg = (gpio_contact_state ? GPIO_CONTACT_CLOSED_TEXT : GPIO_CONTACT_OPEN_TEXT);
-      Serial.print("GPIO contact posting: "); Serial.println(msg);
+      Serial.print("GPIO contact posting: ");
+      Serial.println(msg);
     #endif
-    the_mesh.addSystemPost(gpio_contact_state ? GPIO_CONTACT_CLOSED_TEXT : GPIO_CONTACT_OPEN_TEXT);
+
+    the_mesh.addSystemPost(msg);
   }
 #endif
 
