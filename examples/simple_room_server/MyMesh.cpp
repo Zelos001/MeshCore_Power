@@ -43,9 +43,12 @@ void MyMesh::addPost(ClientInfo *client, const char *postData) {
 }
 
 void MyMesh::addSystemPost(const char *postData) {
+  if (!postData || postData[0] == 0) return;
+
 #if defined(ENABLE_ROOM_POST_DEBUG) && ENABLE_ROOM_POST_DEBUG == 1
   Serial.print("room.post: addSystemPost: "); Serial.println(postData);
 #endif
+
   storePost(self_id, postData);
 }
 
