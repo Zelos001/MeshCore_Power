@@ -19,18 +19,23 @@ void halt() {
 #ifndef ENABLE_GPIO_CONTACT_INPUT
 #define ENABLE_GPIO_CONTACT_INPUT 0
 #endif
+
 #ifndef ENABLE_GPIO_CONTACT_DEBUG
 #define ENABLE_GPIO_CONTACT_DEBUG 0
 #endif
+
 #ifndef GPIO_CONTACT_ACTIVE_LOW
 #define GPIO_CONTACT_ACTIVE_LOW 1
 #endif
+
 #ifndef GPIO_CONTACT_COOLDOWN_MS
 #define GPIO_CONTACT_COOLDOWN_MS 5000
 #endif
+
 #ifndef GPIO_CONTACT_OPEN_TEXT
 #define GPIO_CONTACT_OPEN_TEXT "GPIO contact opened"
 #endif
+
 #ifndef GPIO_CONTACT_CLOSED_TEXT
 #define GPIO_CONTACT_CLOSED_TEXT "GPIO contact closed"
 #endif
@@ -183,9 +188,8 @@ void loop() {
     gpio_contact_last_change = millis();
 
     const char* msg = gpio_contact_active ? GPIO_CONTACT_CLOSED_TEXT : GPIO_CONTACT_OPEN_TEXT;
-    
+
     #if defined(ENABLE_GPIO_CONTACT_DEBUG) && ENABLE_GPIO_CONTACT_DEBUG == 1
-      Serial.print("GPIO contact posting: ");
       Serial.println(msg);
     #endif
 
