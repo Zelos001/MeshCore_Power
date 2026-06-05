@@ -30,10 +30,11 @@
 #define M4_BATT_UPDATE_MS (30000)
 
 void ThinkNodeM4Board::updateBatteryLEDs(uint16_t mv) {
-  digitalWrite(M4_BATT_LED_1, mv >= M4_BATT_LED1_MV ? HIGH : LOW);
-  digitalWrite(M4_BATT_LED_2, mv >= M4_BATT_LED2_MV ? HIGH : LOW);
-  digitalWrite(M4_BATT_LED_3, mv >= M4_BATT_LED3_MV ? HIGH : LOW);
-  digitalWrite(M4_BATT_LED_4, mv >= M4_BATT_LED4_MV ? HIGH : LOW);
+  uint8_t pct = (_batt_percent > 0) ? _batt_percent : (uint8_t)((float)mv / 4200.0f * 100.0f);
+  digitalWrite(M4_BATT_LED_1, pct >= 1  ? HIGH : LOW);
+  digitalWrite(M4_BATT_LED_2, pct >= 25 ? HIGH : LOW);
+  digitalWrite(M4_BATT_LED_3, pct >= 50 ? HIGH : LOW);
+  digitalWrite(M4_BATT_LED_4, pct >= 75 ? HIGH : LOW);
 }
 
 void ThinkNodeM4Board::readBatterySerial() {
