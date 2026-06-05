@@ -238,16 +238,6 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       if (!_board->startOTAUpdate(_prefs->node_name, reply)) {
         strcpy(reply, "Error");
       }
-    } else if (strcmp(command, "check cloud ota") == 0) {
-      if (!_board->checkInternetOTA(_callbacks->getFirmwareVer(), reply)) {
-        // reply already set by checkInternetOTA
-      }
-    } else if (strcmp(command, "start cloud ota") == 0) {
-      strcpy(reply, "Starting cloud OTA...");
-      if (!_board->startInternetOTA(_callbacks->getFirmwareVer(), reply)) {
-        // reply already set by startInternetOTA on error
-      }
-      // on success, board reboots — this line is never reached
     } else if (memcmp(command, "clock", 5) == 0) {
       uint32_t now = getRTCClock()->getCurrentTime();
       DateTime dt = DateTime(now);
@@ -467,6 +457,14 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       _callbacks->formatRadioStatsReply(reply);
     } else if (sender_timestamp == 0 && memcmp(command, "stats-core", 10) == 0 && (command[10] == 0 || command[10] == ' ')) {
       _callbacks->formatStatsReply(reply);
+#if defined(WIFI_INTERNET_OTA)  // [PoLi] internet OTA commands
+    } else if (strcmp(command, "check cloud ota") == 0) {
+      _board->checkInternetOTA(_callbacks->getFirmwareVer(), reply);
+    } else if (strcmp(command, "start cloud ota") == 0) {
+      strcpy(reply, "Starting cloud OTA...");
+      _board->startInternetOTA(_callbacks->getFirmwareVer(), reply);
+      // on success, board reboots — reply is set by startInternetOTA on error
+#endif
     } else {
       strcpy(reply, "Unknown command");
     }
