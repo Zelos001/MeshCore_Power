@@ -928,8 +928,8 @@ void MyMesh::begin(FILESYSTEM *fs) {
   mesh::Mesh::begin();
   _fs = fs;
 #if defined(ARDULINUX_PLATFORM)
-  // Apply runtime INI config as first-run defaults before loading persisted prefs.
-  // If /com_prefs exists, loadPrefs() below will overwrite these with the saved values.
+  // apply runtime INI config as first-run defaults before loading persisted prefs
+  // if /com_prefs exists, loadPrefs() below will overwrite these with the saved values
   StrHelper::strncpy(_prefs.node_name, board.config.advert_name, sizeof(_prefs.node_name));
   _prefs.node_lat = board.config.lat;
   _prefs.node_lon = board.config.lon;
@@ -1019,7 +1019,8 @@ bool MyMesh::formatFileSystem() {
 #elif defined(ESP32)
   return SPIFFS.format();
 #elif defined(ARDULINUX_PLATFORM)
-  return false;  // not supported on Linux
+  // not supported on linux
+  return false;
 #else
 #error "need to implement file system erase"
   return false;
