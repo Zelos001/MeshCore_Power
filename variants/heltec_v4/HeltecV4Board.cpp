@@ -63,6 +63,7 @@ void HeltecV4Board::begin() {
 
   uint16_t HeltecV4Board::getBattMilliVolts()  {
     analogReadResolution(12);
+    analogSetPinAttenuation(PIN_VBAT_READ, ADC_2_5db);  // divider puts pin at 0.61-0.86V so this attenuation should cover it with some room to spare
     digitalWrite(PIN_ADC_CTRL, HIGH);
     delay(10);
     uint32_t raw_mv = 0;
