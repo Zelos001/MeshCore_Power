@@ -18,10 +18,14 @@
 #define PIN_SERIAL1_RX (32 + 14)
 #define PIN_SERIAL1_TX (32 + 12)
 
+// Battery serial UART
+#define PIN_SERIAL2_RX (30)
+#define PIN_SERIAL2_TX (5)
+
 // ── Status LEDs ───────────────────────────────
 #define LED_BUILTIN    (41)
 #define LED_CONN       LED_BUILTIN
-#define LED_BLUE       LED_BUILTIN
+#define LED_BLUE       (-1)  // Disable Bluefruit auto LED control
 
 // ── Button ───────────────────────────────────
 #define PIN_BUTTON1    (4)
