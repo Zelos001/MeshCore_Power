@@ -69,7 +69,7 @@ void RAK12035_SoilMoisture::setup(TwoWire &i2c)
 //
 // ***  This code does not support three sensors ***
 //      The RAK12023 has three connectors, but each of the sensors attached must
-//      all have a different I2C addresses.
+//      all have different I2C addresses.
 //      This code has a function to set the I2C address of a sensor
 //      and currently only supports one address 0x20 (the default).
 //      To support three sensors, EnvironmentSensorManager would need to be modified
@@ -407,8 +407,8 @@ bool RAK12035_SoilMoisture::getEvent(uint8_t *humidity, uint16_t *temp)
  *------------------------------------------------------------------------------------------*/
 bool RAK12035_SoilMoisture::sensor_on()
 {
-    // This section has been commented out due to a pin name conflict with the Heltec v3
-    // This will need to be resolved if this function is to be utilized in the future
+// This has been commented out due to a pin name conflict with the Heltec v3
+// This will need to be resolved if this function is to be utilized in the future
 /*
     pinMode(WB_IO2, OUTPUT);
     digitalWrite(WB_IO2, HIGH);     // Turn on Sensor Power
@@ -451,7 +451,7 @@ bool RAK12035_SoilMoisture::reset()
 //  Power is never removed so the Sensor reset was removed and is not needed, 
 //  But might be needed if power is ever switched off.  Here is tested code.
 
-// This section has been commented out due to a pin name conflict with the Heltec v3
+// This has been commented out due to a pin name conflict with the Heltec v3
 // This will need to be resolved if this function is to be utilized in the future
 /*
     pinMode(WB_IO4, OUTPUT);        //Set IO4 Pin to Output (connected to *reset on sensor)

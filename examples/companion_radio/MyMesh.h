@@ -5,7 +5,7 @@
 #include "AbstractUITask.h"
 
 /*------------ Frame Protocol --------------*/
-#define FIRMWARE_VER_CODE 12
+#define FIRMWARE_VER_CODE 13
 
 #ifndef FIRMWARE_BUILD_DATE
 #define FIRMWARE_BUILD_DATE "19 Apr 2026"
@@ -177,6 +177,9 @@ public:
   }
 #endif
 
+  // To check if there is pending work
+  bool hasPendingWork() const;
+
 private:
   void writeOKFrame();
   void writeErrFrame(uint8_t err_code);
@@ -198,7 +201,7 @@ private:
 
   // helpers, short-cuts
   void saveChannels() { _store->saveChannels(this); }
-  void saveContacts() { _store->saveContacts(this); }
+  void saveContacts();
 
   DataStore* _store;
   NodePrefs _prefs;
