@@ -65,6 +65,14 @@ void ThinkNodeM4Board::begin() {
 
   NRF52BoardDCDC::begin();
 
+  // Power-on LED sequence: 3 quick red flashes then steady during init
+  pinMode(LED_HEARTBEAT, OUTPUT);
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(LED_HEARTBEAT, HIGH); delay(100);
+    digitalWrite(LED_HEARTBEAT, LOW);  delay(100);
+  }
+  digitalWrite(LED_HEARTBEAT, HIGH);
+
   Serial2.setPins(30, 5);
   Serial2.begin(M4_BATT_SERIAL_BAUD);
 
@@ -84,7 +92,7 @@ void ThinkNodeM4Board::begin() {
   pinMode(PIN_BUTTON1, INPUT_PULLUP);
 #endif
 #ifdef LED_HEARTBEAT
-  pinMode(LED_HEARTBEAT, OUTPUT);
+  // Init complete — turn off red LED
   digitalWrite(LED_HEARTBEAT, LOW);
 #endif
 #ifdef LED_PAIRING
