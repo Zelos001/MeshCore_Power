@@ -22,6 +22,8 @@ public:
   void powerOff() override;
   int buttonStateChanged();
   void triggerBatteryLEDs();
+  void onBeforeTransmit() override { digitalWrite(LED_PAIRING, HIGH); }
+  void onAfterTransmit() override { digitalWrite(LED_PAIRING, LOW); }
 
   const char* getManufacturerName() const override {
     return "Elecrow ThinkNode M4";
