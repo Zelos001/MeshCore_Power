@@ -142,7 +142,7 @@ void loop() {
       } else {
         static bool notified = false;
         if (!notified) {
-          Serial.println("Power off in 5 seconds...");
+          Serial.println("Shutting down!");
           notified = true;
         }
       }

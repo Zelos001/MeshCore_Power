@@ -364,7 +364,7 @@ public:
       display.setColor(DisplayDriver::GREEN);
       display.setTextSize(1);
       if (_shutdown_init) {
-        display.drawTextCentered(display.width() / 2, 20, "Power off in 5 sec.");
+        display.drawTextCentered(display.width() / 2, 20, "Shutting down...");
       } else {
         display.drawXbm((display.width() - 32) / 2, 8, power_icon, 32, 32);
         // display.drawTextCentered(display.width() / 2, 40 - 11, "hibernate:" PRESS_LABEL);
@@ -566,13 +566,6 @@ void UITask::shutdown(bool restart){
   if (restart) {
     _board->reboot();
   } else {
-    if (_display != NULL) {
-      _display->startFrame();
-      _display->setTextSize(1);
-      _display->setColor(DisplayDriver::LIGHT);
-      _display->drawTextCentered(_display->width() / 2, 20, "Power off in 5 sec.");
-      _display->endFrame();
-    }
     _wants_shutdown = true;
   }
 }

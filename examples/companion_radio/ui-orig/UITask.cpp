@@ -307,13 +307,6 @@ void UITask::shutdown(bool restart){
   if (restart) {
     _board->reboot();
   } else {
-    if (_display != NULL) {
-      _display->startFrame();
-      _display->setTextSize(1);
-      _display->setColor(DisplayDriver::LIGHT);
-      _display->drawTextCentered(_display->width() / 2, 20, "Power off in 5 seconds...");
-      _display->endFrame();
-    }
     _wants_shutdown = true;
   }
 }
