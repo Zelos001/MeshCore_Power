@@ -39,7 +39,7 @@ void halt() {
   #ifndef GPIO_CONTACT_PIN
     #error "GPIO_CONTACT_PIN must be defined when ENABLE_GPIO_CONTACT_INPUT=1"
   #endif
-static bool gpio_contact_state = false;
+static bool gpio_contact_active = false;
 static int gpio_contact_last_raw = HIGH;
 static unsigned long gpio_contact_debounce_until = 0;
 static unsigned long gpio_contact_last_change = 0;
@@ -59,12 +59,17 @@ void setup() {
   pinMode(GPIO_CONTACT_PIN, INPUT_PULLUP);
   int raw = digitalRead(GPIO_CONTACT_PIN);
   gpio_contact_last_raw = raw;
-  gpio_contact_state = (raw == (GPIO_CONTACT_ACTIVE_LOW ? LOW : HIGH));
+  gpio_contact_active = (raw == (GPIO_CONTACT_ACTIVE_LOW ? LOW : HIGH));
   gpio_contact_debounce_until = millis() + GPIO_CONTACT_DEBOUNCE_MS;
   gpio_contact_last_change = millis();
   gpio_contact_initialized = true;
+
   #if defined(ENABLE_GPIO_CONTACT_DEBUG) && ENABLE_GPIO_CONTACT_DEBUG == 1
-    Serial.printf("GPIO contact enabled: pin=%d active_low=%d initial_raw=%d initial_state=%s\n", (int)GPIO_CONTACT_PIN, (int)GPIO_CONTACT_ACTIVE_LOW, raw==LOW?0:1, gpio_contact_state?"closed":"opened");
+    Serial.printf("GPIO contact enabled: pin=%d active_low=%d initial_raw=%d initial_state=%s\n",
+                  (int)GPIO_CONTACT_PIN,
+                  (int)GPIO_CONTACT_ACTIVE_LOW,
+                  raw == LOW ? 0 : 1,
+                  gpio_contact_active ? "closed" : "opened");
   #endif
 #endif
 
@@ -172,13 +177,13 @@ void loop() {
 
   if (gpio_contact_initialized &&
       (long)(millis() - gpio_contact_debounce_until) >= 0 &&
-      gpio_active != gpio_contact_state &&
+      gpio_active != gpio_contact_active &&
       millis() - gpio_contact_last_change >= GPIO_CONTACT_COOLDOWN_MS) {
-    gpio_contact_state = gpio_active;
+    gpio_contact_active = gpio_active;
     gpio_contact_last_change = millis();
 
-    const char* msg = gpio_contact_state ? GPIO_CONTACT_CLOSED_TEXT : GPIO_CONTACT_OPEN_TEXT;
-
+    const char* msg = gpio_contact_active ? GPIO_CONTACT_CLOSED_TEXT : GPIO_CONTACT_OPEN_TEXT;
+    
     #if defined(ENABLE_GPIO_CONTACT_DEBUG) && ENABLE_GPIO_CONTACT_DEBUG == 1
       Serial.print("GPIO contact posting: ");
       Serial.println(msg);
