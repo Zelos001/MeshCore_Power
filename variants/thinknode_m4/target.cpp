@@ -52,7 +52,6 @@ bool radio_init() {
                            RADIOLIB_LR11X0_LORA_SYNC_WORD_PRIVATE,
                            LORA_TX_POWER, 16, tcxo);
 
-  // Retry once — some units need extra TCXO stabilisation time
   if (status == RADIOLIB_ERR_SPI_CMD_FAILED) {
     delay(100);
     status = radio.begin(LORA_FREQ, LORA_BW, LORA_SF, LORA_CR,
@@ -68,7 +67,6 @@ bool radio_init() {
 #ifdef RF_SWITCH_TABLE
   radio.setRfSwitchTable(rfswitch_dios, rfswitch_table);
 #endif
-
 #ifdef RX_BOOSTED_GAIN
   radio.setRxBoostedGainMode(RX_BOOSTED_GAIN);
 #endif
@@ -101,13 +99,13 @@ mesh::LocalIdentity radio_new_identity() {
 void ThinkNodeM4SensorManager::start_gps() {
   gps_active = true;
   pinMode(PIN_GPS_EN, OUTPUT);
-  digitalWrite(PIN_GPS_EN, LOW);       // GPS_EN_ACTIVE is LOW
+  digitalWrite(PIN_GPS_EN, LOW);
   delay(10);
   pinMode(PIN_GPS_RESET, OUTPUT);
-  digitalWrite(PIN_GPS_RESET, HIGH);   // not in reset
+  digitalWrite(PIN_GPS_RESET, HIGH);
   delay(10);
   pinMode(PIN_GPS_STANDBY, OUTPUT);
-  digitalWrite(PIN_GPS_STANDBY, LOW);  // not in standby
+  digitalWrite(PIN_GPS_STANDBY, LOW);
 }
 
 void ThinkNodeM4SensorManager::stop_gps() {
@@ -129,8 +127,20 @@ bool ThinkNodeM4SensorManager::querySensors(uint8_t requester_permissions, Cayen
 }
 
 void ThinkNodeM4SensorManager::loop() {
-  // Drive board loop so battery serial gets polled
+  // Drive board loop so battery serial gets polled and LED timeout works
   board.loop();
+
+  // Check button press for battery LED display
+  static bool prev_btn = HIGH;
+  static uint32_t last_btn_check = 0;
+  if (millis() - last_btn_check > 100) {
+    last_btn_check = millis();
+    bool btn = (digitalRead(PIN_BUTTON1) == LOW);
+    if (btn && !prev_btn) {
+      board.triggerBatteryLEDs();
+    }
+    prev_btn = btn;
+  }
 
   static long next_gps_update = 0;
   _nmea->loop();
