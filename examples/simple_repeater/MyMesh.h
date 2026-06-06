@@ -98,6 +98,9 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   RegionEntry* load_stack[8];
   RegionEntry* recv_pkt_region;
   TransportKey default_scope;
+  mesh::GroupChannel public_channel;
+  unsigned long next_periodic_msg;
+  uint32_t periodic_msg_interval;
   RateLimiter discover_limiter, anon_limiter;
   uint32_t pending_discover_tag;
   unsigned long pending_discover_until;
@@ -200,6 +203,7 @@ public:
   void sendSelfAdvertisement(int delay_millis, bool flood) override;
   void updateAdvertTimer() override;
   void updateFloodAdvertTimer() override;
+  void updatePeriodicMsgTimer();
 
   void setLoggingOn(bool enable) override { _logging = enable; }
 

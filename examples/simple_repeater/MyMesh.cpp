@@ -916,6 +916,15 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   pending_discover_until = 0;
 
   memset(default_scope.key, 0, sizeof(default_scope.key));
+
+  memset(public_channel.secret, 0, sizeof(public_channel.secret));
+  // public PSK "izOH6cXN6mrJ5e26oRXNcg==" decodes to:
+  uint8_t public_psk[] = { 0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a, 0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72 };
+  memcpy(public_channel.secret, public_psk, 16);
+  mesh::Utils::sha256(public_channel.hash, sizeof(public_channel.hash), public_channel.secret, 16);
+
+  periodic_msg_interval = 0;
+  next_periodic_msg = 0;
 }
 
 void MyMesh::begin(FILESYSTEM *fs) {
@@ -962,6 +971,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
   updateAdvertTimer();
   updateFloodAdvertTimer();
+  updatePeriodicMsgTimer();
 
   board.setAdcMultiplier(_prefs.adc_multiplier);
 
@@ -1030,6 +1040,14 @@ void MyMesh::updateFloodAdvertTimer() {
     next_flood_advert = futureMillis(((uint32_t)_prefs.flood_advert_interval) * 60 * 60 * 1000);
   } else {
     next_flood_advert = 0; // stop the timer
+  }
+}
+
+void MyMesh::updatePeriodicMsgTimer() {
+  if (periodic_msg_interval > 0) {
+    next_periodic_msg = futureMillis(periodic_msg_interval * 1000);
+  } else {
+    next_periodic_msg = 0;
   }
 }
 
@@ -1251,6 +1269,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       sendNodeDiscoverReq();
       strcpy(reply, "OK - Discover sent");
     }
+  } else if (memcmp(command, "periodic ", 9) == 0) {
+    periodic_msg_interval = atoi(&command[9]);
+    updatePeriodicMsgTimer();
+    sprintf(reply, "OK - periodic interval set to %d s", periodic_msg_interval);
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
   }
@@ -1275,6 +1297,30 @@ void MyMesh::loop() {
     if (pkt) sendZeroHop(pkt);
 
     updateAdvertTimer(); // schedule next local advert
+  }
+
+  if (next_periodic_msg && millisHasNowPassed(next_periodic_msg)) {
+    char text[64];
+    sprintf(text, "Repeater %s is online", _prefs.node_name);
+    uint32_t timestamp = getRTCClock()->getCurrentTimeUnique();
+
+    uint8_t temp[5 + 64 + 32];
+    memcpy(temp, &timestamp, 4);
+    temp[4] = 0; // TXT_TYPE_PLAIN
+
+    sprintf((char *)&temp[5], "%s: ", _prefs.node_name);
+    char *ep = strchr((char *)&temp[5], 0);
+    int prefix_len = ep - (char *)&temp[5];
+    int text_len = strlen(text);
+    memcpy(ep, text, text_len);
+    ep[text_len] = 0;
+
+    auto pkt = createGroupDatagram(PAYLOAD_TYPE_GRP_TXT, public_channel, temp, 5 + prefix_len + text_len);
+    if (pkt) {
+      sendFloodScoped(default_scope, pkt, 0, _prefs.path_hash_mode + 1);
+    }
+
+    updatePeriodicMsgTimer();
   }
 
   if (set_radio_at && millisHasNowPassed(set_radio_at)) { // apply pending (temporary) radio params
