@@ -1058,7 +1058,10 @@ void MyMesh::updatePeriodicMsgTimer() {
 }
 
 void MyMesh::savePeriodicPrefs() {
-#if defined(RP2040_PLATFORM)
+#if defined(NRF52_PLATFORM) || defined(STM32_PLATFORM)
+  _fs->remove("/per_prefs");
+  File f = _fs->open("/per_prefs", FILE_O_WRITE);
+#elif defined(RP2040_PLATFORM)
   File f = _fs->open("/per_prefs", "w");
 #else
   File f = _fs->open("/per_prefs", "w", true);
@@ -1075,7 +1078,11 @@ void MyMesh::savePeriodicPrefs() {
 
 void MyMesh::loadPeriodicPrefs() {
   if (_fs->exists("/per_prefs")) {
+#if defined(RP2040_PLATFORM)
     File f = _fs->open("/per_prefs", "r");
+#else
+    File f = _fs->open("/per_prefs");
+#endif
     if (f) {
       f.read((uint8_t*)&periodic_msg_interval, 4);
       f.read((uint8_t*)&periodic_msg_hour, 1);
