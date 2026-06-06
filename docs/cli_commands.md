@@ -905,6 +905,27 @@ region save
 
 ---
 
+#### View or change GPS location blur (privacy)
+**Usage:**
+- `gps blur`
+- `gps blur <digits>`
+
+**Parameters:**
+- `digits`: `0`–`6` decimal places to publish
+  - `0`: no blur (full precision, ~0.1 m)
+  - `1`: ~11 km grid
+  - `2`: ~1.1 km grid
+  - `3`: ~111 m grid (neighborhood)
+  - `4`: ~11 m grid
+  - `5`: ~1.1 m grid
+  - `6`: same as 0 (full precision)
+
+**Default:** `0` (off)
+
+**Note:** Applies to both advertised position and telemetry GPS data. Coordinates are truncated to the nearest grid cell, not rounded.
+
+---
+
 #### View or change the GPS advert policy
 **Usage:**
 - `gps advert`

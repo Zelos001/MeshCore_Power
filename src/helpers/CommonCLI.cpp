@@ -88,7 +88,8 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     file.read((uint8_t *)&_prefs->adc_multiplier, sizeof(_prefs->adc_multiplier));                 // 166
     file.read((uint8_t *)_prefs->owner_info, sizeof(_prefs->owner_info));                          // 170
     file.read((uint8_t *)&_prefs->rx_boosted_gain, sizeof(_prefs->rx_boosted_gain));              // 290
-    // next: 291
+    file.read((uint8_t *)&_prefs->gps_blur_digits, sizeof(_prefs->gps_blur_digits));             // 291
+    // next: 292
 
     // sanitise bad pref values
     _prefs->rx_delay_base = constrain(_prefs->rx_delay_base, 0, 20.0f);
@@ -118,6 +119,19 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
 
     // sanitise settings
     _prefs->rx_boosted_gain = constrain(_prefs->rx_boosted_gain, 0, 1); // boolean
+    _prefs->gps_blur_digits = constrain(_prefs->gps_blur_digits, 0, 6);
+
+    _sensors->gps_blur_digits = _prefs->gps_blur_digits;
+
+    // derive per-device fuzz seeds: first half of pub_key → lat, second half → lon
+    {
+      const uint8_t* pk = _callbacks->getSelfId().pub_key;
+      uint32_t lat_seed = 0, lon_seed = 0;
+      for (int i = 0;  i < 16; i++) lat_seed ^= ((uint32_t)pk[i]      << ((i % 4) * 8));
+      for (int i = 16; i < 32; i++) lon_seed ^= ((uint32_t)pk[i]      << ((i % 4) * 8));
+      _sensors->gps_fuzz_lat = lat_seed;
+      _sensors->gps_fuzz_lon = lon_seed;
+    }
 
     file.close();
   }
@@ -179,7 +193,8 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->adc_multiplier, sizeof(_prefs->adc_multiplier));                 // 166
     file.write((uint8_t *)_prefs->owner_info, sizeof(_prefs->owner_info));                          // 170
     file.write((uint8_t *)&_prefs->rx_boosted_gain, sizeof(_prefs->rx_boosted_gain));              // 290
-    // next: 291
+    file.write((uint8_t *)&_prefs->gps_blur_digits, sizeof(_prefs->gps_blur_digits));             // 291
+    // next: 292
 
     file.close();
   }
@@ -194,15 +209,28 @@ void CommonCLI::savePrefs() {
   _callbacks->savePrefs();
 }
 
+static void applyGpsBlur(double& lat, double& lon, uint8_t digits, uint32_t lat_seed, uint32_t lon_seed) {
+  if (digits == 0 || digits > 6) return;
+  long grid = 1;
+  for (uint8_t i = 0; i < 6 - digits; i++) grid *= 10;
+  long lat_mic = (long)(lat * 1000000.0);
+  long lon_mic = (long)(lon * 1000000.0);
+  lat = (double)(((lat_mic / grid) * grid) + (long)(lat_seed % (uint32_t)grid) - grid / 2) / 1000000.0;
+  lon = (double)(((lon_mic / grid) * grid) + (long)(lon_seed % (uint32_t)grid) - grid / 2) / 1000000.0;
+}
+
 uint8_t CommonCLI::buildAdvertData(uint8_t node_type, uint8_t* app_data) {
   if (_prefs->advert_loc_policy == ADVERT_LOC_NONE) {
     AdvertDataBuilder builder(node_type, _prefs->node_name);
     return builder.encodeTo(app_data);
   } else if (_prefs->advert_loc_policy == ADVERT_LOC_SHARE) {
+    // node_lat/lon already blurred by EnvironmentSensorManager
     AdvertDataBuilder builder(node_type, _prefs->node_name, _sensors->node_lat, _sensors->node_lon);
     return builder.encodeTo(app_data);
   } else {
-    AdvertDataBuilder builder(node_type, _prefs->node_name, _prefs->node_lat, _prefs->node_lon);
+    double lat = _prefs->node_lat, lon = _prefs->node_lon;
+    applyGpsBlur(lat, lon, _prefs->gps_blur_digits, _sensors->gps_fuzz_lat, _sensors->gps_fuzz_lon);
+    AdvertDataBuilder builder(node_type, _prefs->node_name, lat, lon);
     return builder.encodeTo(app_data);
   }
 }
@@ -376,6 +404,37 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
       _prefs->node_lon = _sensors->node_lon;
       savePrefs();
       strcpy(reply, "ok");
+    } else if (memcmp(command, "gps blur", 8) == 0) {
+      if (strlen(command) == 8) {
+        if (_prefs->gps_blur_digits == 0) {
+          strcpy(reply, "> off");
+        } else {
+          uint8_t digits = _prefs->gps_blur_digits;
+          long grid = 1;
+          for (uint8_t i = 0; i < 6 - digits; i++) grid *= 10;
+          double lat_off = ((long)(_sensors->gps_fuzz_lat % (uint32_t)grid) - grid / 2) / 1000000.0;
+          double lon_off = ((long)(_sensors->gps_fuzz_lon % (uint32_t)grid) - grid / 2) / 1000000.0;
+          sprintf(reply, "> %d, offset lat%+.6f lon%+.6f", digits, lat_off, lon_off);
+        }
+      } else {
+        uint8_t digits = atoi(command + 9);
+        if (digits <= 6) {
+          _prefs->gps_blur_digits = digits;
+          _sensors->gps_blur_digits = digits;
+          savePrefs();
+          if (digits == 0) {
+            strcpy(reply, "ok");
+          } else {
+            long grid = 1;
+            for (uint8_t i = 0; i < 6 - digits; i++) grid *= 10;
+            double lat_off = ((long)(_sensors->gps_fuzz_lat % (uint32_t)grid) - grid / 2) / 1000000.0;
+            double lon_off = ((long)(_sensors->gps_fuzz_lon % (uint32_t)grid) - grid / 2) / 1000000.0;
+            sprintf(reply, "ok, offset lat%+.6f lon%+.6f", lat_off, lon_off);
+          }
+        } else {
+          strcpy(reply, "error: value must be 0-6");
+        }
+      }
     } else if (memcmp(command, "gps advert", 10) == 0) {
       if (strlen(command) == 10) {
         switch (_prefs->advert_loc_policy) {
