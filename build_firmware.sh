@@ -344,23 +344,40 @@ main() {
         save_version "$VERSION"
     fi
 
+    # ── Git commit & push website ──
+    if [[ "$NO_DEPLOY" != "true" && "$DRY_RUN" != "true" && ${#success[@]} -gt 0 ]]; then
+        local website_git; website_git="$(dirname "$WEBSITE_DIR")"
+        website_git="$(dirname "$website_git")"  # up from data/firmware → repo root
+        if [[ -d "${website_git}/.git" ]]; then
+            hdr "Publishing website"
+            git -C "$website_git" add data/firmware/
+            if git -C "$website_git" diff --cached --quiet; then
+                dim "  No changes to commit in website repo"
+            else
+                git -C "$website_git" commit -m "chore: firmware ${VERSION} for ${success[*]}"
+                if git -C "$website_git" push; then
+                    ok "  Pushed meshcore.epila.pl → origin"
+                else
+                    warn "  Push failed — commit is local, push manually"
+                fi
+            fi
+        else
+            warn "  Website dir is not a git repo: ${website_git}"
+        fi
+    fi
+
     # ── Summary ──
     hdr "Summary"
     info "Version   : ${VERSION}"
-    [[ ${#success[@]} -gt 0 ]] && ok  "Built OK  : ${success[*]}"
-    [[ ${#failed[@]}  -gt 0 ]] && err "Failed    : ${failed[*]}"
+    if [[ ${#success[@]} -gt 0 ]]; then ok  "Built OK  : ${success[*]}"; fi
+    if [[ ${#failed[@]}  -gt 0 ]]; then err "Failed    : ${failed[*]}"; fi
 
     if [[ "$NO_DEPLOY" != "true" && "$DRY_RUN" != "true" && ${#success[@]} -gt 0 ]]; then
-        echo ""
-        echo -e "${BOLD}Next – push to server:${RESET}"
-        echo "  rsync -av --progress \\"
-        echo "    ${WEBSITE_DIR}/ \\"
-        echo "    user@server:/opt/meshcore-epila/data/firmware/"
         echo ""
         echo -e "${BOLD}Verify manifests:${RESET}"
         for def in "${ACTIVE_BOARDS[@]}"; do
             local bid="${def%%|*}"
-            echo "  curl -s ${BASE_URL}/${bid}/manifest.json"
+            echo "  curl -s \"${BASE_URL}/${bid}/manifest.json?token=\$(grep OTA_TOKEN ${LOCAL_INI} 2>/dev/null | grep -o '\"[^\"]*\"' | tail -1 | tr -d '\"')\""
         done
     fi
 
