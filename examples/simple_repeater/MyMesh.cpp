@@ -60,6 +60,8 @@
 
 #define LAZY_CONTACTS_WRITE_DELAY    5000
 
+static const uint8_t PUBLIC_PSK[] = { 0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a, 0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72 };
+
 void MyMesh::putNeighbour(const mesh::Identity &id, uint32_t timestamp, float snr) {
 #if MAX_NEIGHBOURS // check if neighbours enabled
   // find existing neighbour, else use least recently updated
@@ -918,9 +920,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   memset(default_scope.key, 0, sizeof(default_scope.key));
 
   memset(periodic_channel.secret, 0, sizeof(periodic_channel.secret));
-  // public PSK "izOH6cXN6mrJ5e26oRXNcg==" decodes to:
-  uint8_t public_psk[] = { 0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a, 0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72 };
-  memcpy(periodic_channel.secret, public_psk, 16);
+  memcpy(periodic_channel.secret, PUBLIC_PSK, 16);
   mesh::Utils::sha256(periodic_channel.hash, sizeof(periodic_channel.hash), periodic_channel.secret, 16);
 
   periodic_msg_interval = 0;
@@ -1058,12 +1058,17 @@ void MyMesh::updatePeriodicMsgTimer() {
 }
 
 void MyMesh::savePeriodicPrefs() {
+#if defined(RP2040_PLATFORM)
+  File f = _fs->open("/per_prefs", "w");
+#else
   File f = _fs->open("/per_prefs", "w", true);
+#endif
   if (f) {
     f.write((uint8_t*)&periodic_msg_interval, 4);
     f.write((uint8_t*)&periodic_msg_hour, 1);
     f.write((uint8_t*)periodic_msg_text, 64);
     f.write((uint8_t*)periodic_msg_chan_name, 32);
+    f.write((uint8_t*)periodic_channel.secret, 16);
     f.close();
   }
 }
@@ -1076,18 +1081,10 @@ void MyMesh::loadPeriodicPrefs() {
       f.read((uint8_t*)&periodic_msg_hour, 1);
       f.read((uint8_t*)periodic_msg_text, 64);
       f.read((uint8_t*)periodic_msg_chan_name, 32);
+      f.read((uint8_t*)periodic_channel.secret, 16);
       f.close();
 
-      // update channel hash
-      uint8_t psk[32];
-      memset(psk, 0, sizeof(psk));
-      if (periodic_msg_chan_name[0] == '#') {
-        mesh::Utils::sha256(psk, 16, (const uint8_t*)periodic_msg_chan_name, strlen(periodic_msg_chan_name));
-        memcpy(periodic_channel.secret, psk, 16);
-      } else {
-        uint8_t public_psk[] = { 0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a, 0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72 };
-        memcpy(periodic_channel.secret, public_psk, 16);
-      }
+      // update channel hash from secret
       mesh::Utils::sha256(periodic_channel.hash, sizeof(periodic_channel.hash), periodic_channel.secret, 16);
     }
   }
@@ -1328,22 +1325,20 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       sprintf(reply, "OK - periodic text set to: %s", periodic_msg_text);
     } else if (memcmp(sub, "chan ", 5) == 0) {
       StrHelper::strncpy(periodic_msg_chan_name, sub + 5, sizeof(periodic_msg_chan_name));
-      // Re-calculate channel hash
-      uint8_t psk[32];
-      memset(psk, 0, sizeof(psk));
-      mesh::Utils::sha256(psk, 16, (const uint8_t*)periodic_msg_chan_name, strlen(periodic_msg_chan_name)); // Simplified: using name as secret seed if it starts with #
-      if (periodic_msg_chan_name[0] == '#') {
-         // actually we should probably look up the channel in the mesh, but repeater doesn't have a channel table by default like BaseChatMesh
-         // for now we just use a simple hash of the name
-         memcpy(periodic_channel.secret, psk, 16);
-      } else {
-         // default to Public if it's not a #channel
-         uint8_t public_psk[] = { 0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a, 0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72 };
-         memcpy(periodic_channel.secret, public_psk, 16);
+      if (strcmp(periodic_msg_chan_name, "Public") == 0) {
+        memcpy(periodic_channel.secret, PUBLIC_PSK, 16);
+        mesh::Utils::sha256(periodic_channel.hash, sizeof(periodic_channel.hash), periodic_channel.secret, 16);
       }
-      mesh::Utils::sha256(periodic_channel.hash, sizeof(periodic_channel.hash), periodic_channel.secret, 16);
       savePeriodicPrefs();
-      sprintf(reply, "OK - channel set to %s", periodic_msg_chan_name);
+      sprintf(reply, "OK - channel name set to %s", periodic_msg_chan_name);
+    } else if (memcmp(sub, "key ", 4) == 0) {
+      if (mesh::Utils::fromHex(periodic_channel.secret, 16, sub + 4)) {
+        mesh::Utils::sha256(periodic_channel.hash, sizeof(periodic_channel.hash), periodic_channel.secret, 16);
+        savePeriodicPrefs();
+        strcpy(reply, "OK - channel secret key set");
+      } else {
+        strcpy(reply, "Err - bad hex key (must be 32 chars)");
+      }
     } else {
       periodic_msg_interval = atoi(sub);
       updatePeriodicMsgTimer();
