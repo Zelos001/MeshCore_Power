@@ -75,7 +75,7 @@ void AutoDiscoverRTCClock::begin(TwoWire& wire) {
   }
 }
 
-uint32_t AutoDiscoverRTCClock::getCurrentTime() {x  
+uint32_t AutoDiscoverRTCClock::getCurrentTime() {
   if (ds3231_success) {
     return rtc_3231.now().unixtime();
   }
