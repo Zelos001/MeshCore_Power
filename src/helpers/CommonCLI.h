@@ -62,6 +62,7 @@ struct NodePrefs { // persisted to file
   char owner_info[120];
   uint8_t rx_boosted_gain; // power settings
   uint8_t path_hash_mode;   // which path mode to use when sending
+  uint8_t min_path_hash_mode; // minimum path hash size to forward (0=disabled)
   uint8_t loop_detect;
 };
 
