@@ -62,6 +62,14 @@
 #define CMD_SET_DEFAULT_FLOOD_SCOPE   63
 #define CMD_GET_DEFAULT_FLOOD_SCOPE   64
 #define CMD_SEND_RAW_PACKET           65
+#define CMD_SET_CLIENT_REPEAT_MODE    66  // non-radio-params variant; SELECTIVE bypasses isValidClientRepeatFreq
+
+#define CLIENT_REPEAT_OFF        0
+#define CLIENT_REPEAT_ALL        1
+#define CLIENT_REPEAT_SELECTIVE  2
+
+// Existing ContactInfo.flags bit; doubles as the SELECTIVE allowlist gate.
+#define FLAG_FAVOURITE           0x01
 
 // Stats sub-types for CMD_GET_STATS
 #define STATS_TYPE_CORE               0
@@ -480,7 +488,71 @@ bool MyMesh::filterRecvFloodPacket(mesh::Packet* packet) {
 }
 
 bool MyMesh::allowPacketForward(const mesh::Packet* packet) {
-  return _prefs.client_repeat != 0;
+  switch (_prefs.client_repeat) {
+    case CLIENT_REPEAT_OFF:
+      return false;
+    case CLIENT_REPEAT_ALL:
+      return true;
+    case CLIENT_REPEAT_SELECTIVE:
+      // A DIRECT-routed packet only reaches allowPacketForward() after the core
+      // (Mesh::routeRecvPacket) has confirmed this node is the recorded next hop on its
+      // path: ACK / PATH-return / response packets travelling back along a path this node was
+      // inserted into while flood-relaying the outbound. Forward them unconditionally --
+      // filtering by source here would black-hole the route, since the return's source is
+      // the far contact rather than the allowlisted node.
+      if (packet->isRouteDirect()) return true;
+
+      // Re-flood (full-hop) when an outbound flood matches the allowlist. Returning true
+      // lets Mesh::routeRecvPacket() append this node's hash to the path and retransmit,
+      // which propagates the packet to its destination and places this node on the path so
+      // the destination's reverse-routed ACK comes back through it. Selectivity (the
+      // allowlist gate below) is what keeps this node from becoming a next-hop for
+      // unrelated mesh traffic.
+      if (shouldSelectivelyRelay(packet)) {
+        _selective_relays++;
+        return true;
+      }
+      return false;
+  }
+  return false;
+}
+
+bool MyMesh::shouldSelectivelyRelay(const mesh::Packet* packet) {
+  uint8_t pt = packet->getPayloadType();
+
+  // Chat-type flood packets carry src_hash at payload[1].
+  if (pt == PAYLOAD_TYPE_TXT_MSG || pt == PAYLOAD_TYPE_REQ ||
+      pt == PAYLOAD_TYPE_RESPONSE || pt == PAYLOAD_TYPE_PATH) {
+    if (packet->payload_len < 2) return false;
+    uint8_t src_hash = packet->payload[1];
+    int n = getNumContacts();
+    for (int i = 0; i < n; i++) {
+      ContactInfo ci;
+      if (!getContactByIdx(i, ci)) continue;
+      // 1-byte hash collisions (~favourite_count/256) are intrinsic to the on-wire src_hash.
+      if (ci.id.isHashMatch(&src_hash, 1) && (ci.flags & FLAG_FAVOURITE)) return true;
+    }
+    return false;
+  }
+
+#ifdef MAX_GROUP_CHANNELS
+  // Group packets carry the channel_hash at payload[0] (matches the core's group dedup key).
+  if (pt == PAYLOAD_TYPE_GRP_TXT || pt == PAYLOAD_TYPE_GRP_DATA) {
+    if (packet->payload_len < 1) return false;
+    uint8_t ch_hash = packet->payload[0];
+    for (int i = 0; i < MAX_GROUP_CHANNELS; i++) {
+      ChannelDetails cd;
+      if (!getChannel(i, cd)) continue;
+      // After remove_channel, the slot's name is empty but hash is sha256(zeros),
+      // which would otherwise produce a 1-in-256 false positive.
+      if (cd.name[0] == '\0') continue;
+      if (cd.channel.hash[0] == ch_hash) return true;
+    }
+    return false;
+  }
+#endif
+
+  return false;
 }
 
 void MyMesh::sendFloodScoped(const TransportKey& scope, mesh::Packet* pkt, uint32_t delay_millis) {
@@ -863,6 +935,8 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   next_ack_idx = 0;
   sign_data = NULL;
   dirty_contacts_expiry = 0;
+  _selective_relays = 0;
+  _selective_drops = 0;
   memset(advert_paths, 0, sizeof(advert_paths));
   memset(send_scope.key, 0, sizeof(send_scope.key));
   send_unscoped = false;
@@ -1889,6 +1963,9 @@ void MyMesh::handleCmdFrame(size_t len) {
       memcpy(&out_frame[i], &n_recv_flood, 4); i += 4;
       memcpy(&out_frame[i], &n_recv_direct, 4); i += 4;
       memcpy(&out_frame[i], &n_recv_errors, 4); i += 4;
+      // Extra 8 bytes; parsers that don't know about these stop at recv_errors.
+      memcpy(&out_frame[i], &_selective_relays, 4); i += 4;
+      memcpy(&out_frame[i], &_selective_drops, 4); i += 4;
       _serial->writeFrame(out_frame, i);
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG); // invalid stats sub-type
@@ -1985,6 +2062,18 @@ void MyMesh::handleCmdFrame(size_t len) {
       }
     } else {
       writeErrFrame(ERR_CODE_TABLE_FULL);
+    }
+  } else if (cmd_frame[0] == CMD_SET_CLIENT_REPEAT_MODE && len >= 2) {
+    uint8_t mode = cmd_frame[1];
+    if (mode > CLIENT_REPEAT_SELECTIVE) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else if (mode == CLIENT_REPEAT_ALL && !isValidClientRepeatFreq((uint32_t)(_prefs.freq * 1000))) {
+      // ALL mode still requires a designated repeater freq; SELECTIVE bypasses the gate
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else {
+      _prefs.client_repeat = mode;
+      savePrefs();
+      writeOKFrame();
     }
   } else {
     writeErrFrame(ERR_CODE_UNSUPPORTED_CMD);
