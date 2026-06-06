@@ -182,7 +182,11 @@ write_local_ini() {
     } > "$LOCAL_INI"
 
     ok "platformio.local.ini → ${version} / ${build_date}"
-    [[ -n "$wifi_lines" ]] && ok "  WiFi credentials preserved"
+    if [[ -n "$wifi_lines" ]]; then
+        ok "  WiFi credentials preserved"
+    else
+        warn "  No WiFi credentials — add WIFI_SSID_N/WIFI_PWD_N to platformio.local.ini"
+    fi
 }
 
 # ─── Build one board ─────────────────────────────────────────────────────────
@@ -227,17 +231,17 @@ deploy_board() {
         return 0
     fi
 
-    if [[ ! -d "$dest_dir" ]]; then
-        err "  Deploy dir missing: ${dest_dir}"
-        err "  Create it manually or run: mkdir -p ${dest_dir}"
-        return 1
-    fi
-
     if [[ "$DRY_RUN" == "true" ]]; then
         warn "  DRY-RUN: cp ${bin_src}"
         warn "         → ${bin_dst}"
         warn "  DRY-RUN: manifest.json ← {\"version\":\"${version}\",\"url\":\"${fw_url}\"}"
         return 0
+    fi
+
+    if [[ ! -d "$dest_dir" ]]; then
+        err "  Deploy dir missing: ${dest_dir}"
+        err "  Create it manually or run: mkdir -p ${dest_dir}"
+        return 1
     fi
 
     cp "$bin_src" "$bin_dst"
