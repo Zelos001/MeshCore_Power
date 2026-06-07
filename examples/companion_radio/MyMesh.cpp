@@ -520,17 +520,24 @@ bool MyMesh::allowPacketForward(const mesh::Packet* packet) {
 bool MyMesh::shouldSelectivelyRelay(const mesh::Packet* packet) {
   uint8_t pt = packet->getPayloadType();
 
-  // Chat-type flood packets carry src_hash at payload[1].
+  // Chat-type flood layout: payload[0]=dest_hash, payload[1]=src_hash.
+  // Match a favourite at either endpoint so both directions of its conversation relay:
+  // outbound floods it sends (src), and floods headed back to it (dest). When the
+  // favourite is shielded behind this relayer, its peer has no path home yet, so the
+  // returns come back as floods rather than direct routes. Without the dest match the
+  // return leg is dropped and the message is never ACKed.
   if (pt == PAYLOAD_TYPE_TXT_MSG || pt == PAYLOAD_TYPE_REQ ||
       pt == PAYLOAD_TYPE_RESPONSE || pt == PAYLOAD_TYPE_PATH) {
     if (packet->payload_len < 2) return false;
+    uint8_t dst_hash = packet->payload[0];
     uint8_t src_hash = packet->payload[1];
     int n = getNumContacts();
     for (int i = 0; i < n; i++) {
       ContactInfo ci;
       if (!getContactByIdx(i, ci)) continue;
-      // 1-byte hash collisions (~favourite_count/256) are intrinsic to the on-wire src_hash.
-      if (ci.id.isHashMatch(&src_hash, 1) && (ci.flags & FLAG_FAVOURITE)) return true;
+      // 1-byte hash collisions (~favourite_count/256) are intrinsic to the on-wire hash.
+      if ((ci.id.isHashMatch(&src_hash, 1) || ci.id.isHashMatch(&dst_hash, 1))
+           && (ci.flags & FLAG_FAVOURITE)) return true;
     }
     return false;
   }
