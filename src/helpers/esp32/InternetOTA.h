@@ -9,15 +9,27 @@
 #include <HTTPUpdate.h>
 #include "WiFiConnect.h"
 
-// Base URL for firmware manifests: <OTA_BASE_URL>/<board_id>/manifest.json
+// Base URL for firmware manifests:
+//   <OTA_BASE_URL>/<board_id>/manifest.json                (OTA_VARIANT undefined — repeater)
+//   <OTA_BASE_URL>/<board_id>/<OTA_VARIANT>/manifest.json  (OTA_VARIANT defined — companion)
 // Server uses HTTPS — certificate validation is skipped (embedded device, known server).
+// Server-side layout splits firmware by device type and, for companion, by
+// connectivity variant (usb/ble/wifi): data/firmware/<repeater|companion>/<board_id>[/<variant>]/
 #ifndef OTA_BASE_URL
-  #define OTA_BASE_URL "https://meshcore.epila.pl/firmware"
+  #define OTA_BASE_URL "https://meshcore.epila.pl/firmware/repeater"
 #endif
 
 // Board ID must be defined per variant (e.g. "heltec_v4", "heltec_v3", "xiao_s3_wio")
 #ifndef BOARD_ID
   #define BOARD_ID "unknown"
+#endif
+
+// Optional extra path segment inserted between the board ID and "manifest.json"
+// (e.g. "wifi" for companion builds, whose firmware is split by connectivity variant
+// on the server). Leave undefined for builds that use the plain <board_id>/manifest.json
+// layout (e.g. the repeater).
+#ifndef OTA_VARIANT
+  #define OTA_VARIANT ""
 #endif
 
 // OTA download token — must match the token configured in nginx.conf on the server.
@@ -83,11 +95,18 @@ public:
       return false;
     }
 
+    char path[80];
+    if (strlen(OTA_VARIANT) > 0) {
+      snprintf(path, sizeof(path), "%s/%s", BOARD_ID, OTA_VARIANT);
+    } else {
+      snprintf(path, sizeof(path), "%s", BOARD_ID);
+    }
+
     char url[320];
     if (strlen(OTA_TOKEN) > 0) {
-      snprintf(url, sizeof(url), "%s/%s/manifest.json?token=%s", OTA_BASE_URL, BOARD_ID, OTA_TOKEN);
+      snprintf(url, sizeof(url), "%s/%s/manifest.json?token=%s", OTA_BASE_URL, path, OTA_TOKEN);
     } else {
-      snprintf(url, sizeof(url), "%s/%s/manifest.json", OTA_BASE_URL, BOARD_ID);
+      snprintf(url, sizeof(url), "%s/%s/manifest.json", OTA_BASE_URL, path);
     }
 
     WiFiClientSecure tls;

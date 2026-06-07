@@ -41,6 +41,10 @@ static uint32_t _atoi(const char* sp) {
     #ifndef TCP_PORT
       #define TCP_PORT 5000
     #endif
+    #if defined(WIFI_INTERNET_OTA)
+      #include <helpers/esp32/WiFiConnect.h>
+      #include <helpers/esp32/InternetOTA.h>
+    #endif
   #elif defined(BLE_PIN_CODE)
     #include <helpers/esp32/SerialBLEInterface.h>
     SerialBLEInterface serial_interface;
@@ -263,6 +267,44 @@ void loop() {
     WiFi.disconnect();
     WiFi.reconnect();
     last_wifi_reconnect_attempt = millis();
+  }
+#endif
+
+#if defined(ESP32) && defined(WIFI_SSID) && defined(WIFI_INTERNET_OTA)
+  // Periodically check for, and apply, firmware updates from the cloud — same
+  // mechanism as the repeater (InternetOTA + manifest.json), but reusing this
+  // device's existing WIFI_SSID/WIFI_PWD link instead of opening a second one
+  // (the companion radio stays connected permanently for the app TCP bridge,
+  // unlike the repeater which connects on-demand just for the OTA check).
+  {
+    static uint32_t _next_ota_ms = 5UL * 60 * 1000;  // first check 5 min after boot
+    if (millis() >= _next_ota_ms) {
+      _next_ota_ms = millis() + 15UL * 60 * 1000;    // reschedule before check
+      if (WiFi.status() == WL_CONNECTED) {
+        WiFiConnect _ota_wifi;  // never connected/disconnected — just reflects the existing link's status
+        InternetOTA ota(_ota_wifi);
+        char ota_reply[160];
+        bool ok = ota.checkAndUpdate(FIRMWARE_VERSION, ota_reply, sizeof(ota_reply));
+        Serial.printf("[OTA] %s\n", ota_reply);
+        if (ok) { delay(500); esp_restart(); }
+      }
+    }
+  }
+#endif
+
+#if defined(ESP32) && !defined(WIFI_SSID) && defined(WIFI_INTERNET_OTA)
+  // USB/BLE companion builds have no permanent WiFi link (the app connects via
+  // USB serial or BLE) — connect on-demand for the check, exactly like the
+  // repeater's periodic cloud-OTA check (board.startInternetOTA manages its
+  // own WiFiConnect using WIFI_SSID_1../WIFI_PWD_1.. from platformio.local.ini).
+  {
+    static uint32_t _next_ota_ms = 5UL * 60 * 1000;  // first check 5 min after boot
+    if (millis() >= _next_ota_ms) {
+      _next_ota_ms = millis() + 15UL * 60 * 1000;    // reschedule before check
+      char ota_reply[160];
+      board.startInternetOTA(FIRMWARE_VERSION, ota_reply);
+      Serial.printf("[OTA] %s\n", ota_reply);
+    }
   }
 #endif
 }
