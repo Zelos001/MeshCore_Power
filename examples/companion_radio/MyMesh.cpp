@@ -1461,7 +1461,11 @@ void MyMesh::handleCmdFrame(size_t len) {
       repeat = cmd_frame[i++];   // FIRMWARE_VER_CODE  9+
     }
 
-    if (repeat && !isValidClientRepeatFreq(freq)) {
+    // Only CLIENT_REPEAT_ALL is tied to a designated repeater freq; SELECTIVE is
+    // exempt here too, matching CMD_SET_CLIENT_REPEAT_MODE.
+    if (repeat > CLIENT_REPEAT_SELECTIVE) {
+      writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+    } else if (repeat == CLIENT_REPEAT_ALL && !isValidClientRepeatFreq(freq)) {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     } else if (freq >= 150000 && freq <= 2500000 && sf >= 5 && sf <= 12 && cr >= 5 && cr <= 8 && bw >= 7000 &&
         bw <= 500000) {
