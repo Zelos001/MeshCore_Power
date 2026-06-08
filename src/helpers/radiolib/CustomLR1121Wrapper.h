@@ -38,7 +38,7 @@ public:
 
   void onSendFinished() override {
     RadioLibWrapper::onSendFinished();
-    _radio->setPreambleLength(16);
+    _radio->setPreambleLength(preambleLengthForSF(getSpreadingFactor()));
   }
 
   float getLastRSSI() const override {
