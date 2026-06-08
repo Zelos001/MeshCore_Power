@@ -526,11 +526,13 @@ bool MyMesh::shouldSelectivelyRelay(const mesh::Packet* packet) {
   // favourite is shielded behind this relayer, its peer has no path home yet, so the
   // returns come back as floods rather than direct routes. Without the dest match the
   // return leg is dropped and the message is never ACKed.
-  if (pt == PAYLOAD_TYPE_TXT_MSG || pt == PAYLOAD_TYPE_REQ ||
-      pt == PAYLOAD_TYPE_RESPONSE || pt == PAYLOAD_TYPE_PATH) {
-    if (packet->payload_len < 2) return false;
+  bool chat = (pt == PAYLOAD_TYPE_TXT_MSG || pt == PAYLOAD_TYPE_REQ ||
+               pt == PAYLOAD_TYPE_RESPONSE || pt == PAYLOAD_TYPE_PATH);
+  // ANON_REQ (e.g. first contact / room login to a shielded favourite) is dest_hash at
+  // payload[0] then the sender's full pubkey -- no 1-byte src_hash -- so dest-match only.
+  if (chat || pt == PAYLOAD_TYPE_ANON_REQ) {
+    if (packet->payload_len < (chat ? 2 : 1)) return false;
     uint8_t dst_hash = packet->payload[0];
-    uint8_t src_hash = packet->payload[1];
     int n = getNumContacts();
     for (int i = 0; i < n; i++) {
       ContactInfo ci;
@@ -540,7 +542,8 @@ bool MyMesh::shouldSelectivelyRelay(const mesh::Packet* packet) {
       // convenience and shouldn't pull their traffic (or their hash) into the allowlist.
       if (ci.type != ADV_TYPE_CHAT && ci.type != ADV_TYPE_ROOM) continue;
       // 1-byte hash collisions (~favourite_count/256) are intrinsic to the on-wire hash.
-      if (ci.id.isHashMatch(&src_hash, 1) || ci.id.isHashMatch(&dst_hash, 1)) return true;
+      if (ci.id.isHashMatch(&dst_hash, 1)) return true;
+      if (chat && ci.id.isHashMatch(&packet->payload[1], 1)) return true;
     }
     return false;
   }
