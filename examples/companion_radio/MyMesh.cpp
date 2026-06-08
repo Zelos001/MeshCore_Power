@@ -535,9 +535,12 @@ bool MyMesh::shouldSelectivelyRelay(const mesh::Packet* packet) {
     for (int i = 0; i < n; i++) {
       ContactInfo ci;
       if (!getContactByIdx(i, ci)) continue;
+      if (!(ci.flags & FLAG_FAVOURITE)) continue;
+      // Only relay for conversational peers; repeaters/sensors get starred for
+      // convenience and shouldn't pull their traffic (or their hash) into the allowlist.
+      if (ci.type != ADV_TYPE_CHAT && ci.type != ADV_TYPE_ROOM) continue;
       // 1-byte hash collisions (~favourite_count/256) are intrinsic to the on-wire hash.
-      if ((ci.id.isHashMatch(&src_hash, 1) || ci.id.isHashMatch(&dst_hash, 1))
-           && (ci.flags & FLAG_FAVOURITE)) return true;
+      if (ci.id.isHashMatch(&src_hash, 1) || ci.id.isHashMatch(&dst_hash, 1)) return true;
     }
     return false;
   }
