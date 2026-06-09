@@ -8,6 +8,14 @@ public:
   CustomLR2021Wrapper(CustomLR2021 &radio, mesh::MainBoard &board)
       : RadioLibWrapper(radio, board) {}
 
+  void setParams(float freq, float bw, uint8_t sf, uint8_t cr) override {
+    ((CustomLR2021 *)_radio)->setFrequency(freq);
+    ((CustomLR2021 *)_radio)->setSpreadingFactor(sf);
+    ((CustomLR2021 *)_radio)->setBandwidth(bw);
+    ((CustomLR2021 *)_radio)->setCodingRate(cr);
+    updatePreamble(sf);
+  }
+
   bool isReceivingPacket() override {
     return ((CustomLR2021 *)_radio)->isReceiving();
   }
@@ -20,7 +28,8 @@ public:
 
   void onSendFinished() override {
     RadioLibWrapper::onSendFinished();
-    _radio->setPreambleLength(16);
+    _radio->setPreambleLength(
+        preambleLengthForSF(getSpreadingFactor()));
   }
 
   float getLastRSSI() const override {
@@ -29,6 +38,10 @@ public:
 
   float getLastSNR() const override {
     return ((CustomLR2021 *)_radio)->getSNR();
+  }
+
+  uint8_t getSpreadingFactor() const override {
+    return ((CustomLR2021 *)_radio)->getSpreadingFactor();
   }
 
   float packetScore(float snr, int packet_len) override {
