@@ -1,5 +1,50 @@
 #include "MyMesh.h"
 #include <algorithm>
+#include <ctype.h>
+
+/* --------------------- public-channel content filter ------------------ */
+
+// The well-known MeshCore public channel PSK ("izOH6cXN6mrJ5e26oRXNcg==")
+static const uint8_t PUBLIC_CHANNEL_SECRET[16] = {
+  0x8b, 0x33, 0x87, 0xe9, 0xc5, 0xcd, 0xea, 0x6a,
+  0xc9, 0xe5, 0xed, 0xba, 0xa1, 0x15, 0xcd, 0x72
+};
+
+static int b64Val(char c) {
+  if (c >= 'A' && c <= 'Z') return c - 'A';
+  if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+  if (c >= '0' && c <= '9') return c - '0' + 52;
+  if (c == '+') return 62;
+  if (c == '/') return 63;
+  return -1;
+}
+
+static int decodeBase64(const char* in, uint8_t* out, int max_out) {
+  int bits = 0, nbits = 0, n = 0;
+  for (const char* p = in; *p && *p != '='; p++) {
+    int v = b64Val(*p);
+    if (v < 0) continue;   // skip whitespace and other non-alphabet chars
+    bits = (bits << 6) | v;
+    nbits += 6;
+    if (nbits >= 8) {
+      nbits -= 8;
+      if (n >= max_out) return -1;
+      out[n++] = (bits >> nbits) & 0xFF;
+    }
+  }
+  return n;
+}
+
+static bool icontains(const char* haystack, const char* needle) {
+  if (!*needle) return false;
+  for (const char* h = haystack; *h; h++) {
+    const char* a = h;
+    const char* b = needle;
+    while (*a && *b && tolower((unsigned char)*a) == tolower((unsigned char)*b)) { a++; b++; }
+    if (!*b) return true;
+  }
+  return false;
+}
 
 /* ------------------------------ Config -------------------------------- */
 
@@ -627,6 +672,184 @@ void MyMesh::getPeerSharedSecret(uint8_t *dest_secret, int peer_idx) {
   }
 }
 
+bool MyMesh::addFilterChannel(const char *psk_b64) {
+  if (num_filter_channels >= MAX_FILTER_CHANNELS) return false;
+
+  auto ch = &filter_channels[num_filter_channels];
+  memset(ch->secret, 0, sizeof(ch->secret));
+
+  int len;
+  if (strcmp(psk_b64, "public") == 0) {
+    memcpy(ch->secret, PUBLIC_CHANNEL_SECRET, sizeof(PUBLIC_CHANNEL_SECRET));
+    len = sizeof(PUBLIC_CHANNEL_SECRET);
+  } else {
+    len = decodeBase64(psk_b64, ch->secret, sizeof(ch->secret));
+  }
+  if (len != 16 && len != 32) return false;
+
+  mesh::Utils::sha256(ch->hash, sizeof(ch->hash), ch->secret, len);
+  StrHelper::strncpy(filter_channel_psk[num_filter_channels], psk_b64, FILTER_PSK_B64_LEN);
+  num_filter_channels++;
+  return true;
+}
+
+int MyMesh::searchChannelsByHash(const uint8_t *hash, mesh::GroupChannel channels[], int max_matches) {
+  int n = 0;
+  for (int i = 0; i < num_filter_channels && n < max_matches; i++) {
+    if (filter_channels[i].hash[0] == hash[0]) {
+      channels[n++] = filter_channels[i];
+    }
+  }
+  return n;
+}
+
+void MyMesh::onGroupDataRecv(mesh::Packet *packet, uint8_t type, const mesh::GroupChannel &channel,
+                             uint8_t *data, size_t len) {
+  if (type != PAYLOAD_TYPE_GRP_TXT) return; // only inspect channel text messages
+  if (len < 6) return;
+  if ((data[4] >> 2) != 0) return; // not a plain-text message
+
+  data[len] = 0; // make a C string: "sender_name: text"
+  const char *msg = (const char *)&data[5];
+
+  const char *sep = strstr(msg, ": ");
+  const char *text = sep ? sep + 2 : msg;
+
+  bool blocked = false;
+  const char *reason = "keyword";
+
+  if (sep) {
+    char sender[FILTER_TERM_LEN];
+    int slen = sep - msg;
+    if (slen >= (int)sizeof(sender)) slen = sizeof(sender) - 1;
+    memcpy(sender, msg, slen);
+    sender[slen] = 0;
+    for (int i = 0; i < num_block_senders && !blocked; i++) {
+      if (icontains(sender, block_senders[i])) { blocked = true; reason = "sender"; }
+    }
+  }
+  for (int i = 0; i < num_block_keywords && !blocked; i++) {
+    if (icontains(text, block_keywords[i])) blocked = true;
+  }
+
+  if (blocked) {
+    packet->markDoNotRetransmit(); // routeRecvPacket() will now release instead of forwarding
+    n_filtered++;
+    if (_logging) {
+      File f = openAppend(PACKET_LOG_FILE);
+      if (f) {
+        f.print(getLogDateTime());
+        f.printf(": FILTERED (%s): %s\n", reason, msg);
+        f.close();
+      }
+    }
+  }
+}
+
+void MyMesh::loadChannelFilter() {
+  num_filter_channels = 0;
+  num_block_keywords = 0;
+  num_block_senders = 0;
+
+#if defined(RP2040_PLATFORM)
+  File f = _fs->open(CHANNEL_FILTER_FILE, "r");
+#else
+  File f = _fs->open(CHANNEL_FILTER_FILE);
+#endif
+  if (!f) return;
+
+  char line[FILTER_PSK_B64_LEN + 8];
+  while (f.available()) {
+    int n = f.readBytesUntil('\n', (uint8_t *)line, sizeof(line) - 1);
+    line[n] = 0;
+    while (n > 0 && (line[n - 1] == '\r' || line[n - 1] == ' ')) line[--n] = 0;
+    if (n < 3 || line[1] != ' ') continue;
+
+    const char *val = &line[2];
+    if (line[0] == 'C') {
+      addFilterChannel(val);
+    } else if (line[0] == 'K' && num_block_keywords < MAX_FILTER_TERMS) {
+      StrHelper::strncpy(block_keywords[num_block_keywords++], val, FILTER_TERM_LEN);
+    } else if (line[0] == 'S' && num_block_senders < MAX_FILTER_TERMS) {
+      StrHelper::strncpy(block_senders[num_block_senders++], val, FILTER_TERM_LEN);
+    }
+  }
+  f.close();
+}
+
+void MyMesh::saveChannelFilter() {
+  _fs->remove(CHANNEL_FILTER_FILE);
+  File f = openAppend(CHANNEL_FILTER_FILE);
+  if (!f) return;
+  for (int i = 0; i < num_filter_channels; i++) f.printf("C %s\n", filter_channel_psk[i]);
+  for (int i = 0; i < num_block_keywords; i++) f.printf("K %s\n", block_keywords[i]);
+  for (int i = 0; i < num_block_senders; i++) f.printf("S %s\n", block_senders[i]);
+  f.close();
+}
+
+void MyMesh::handleFilterCommand(char *command, char *reply) {
+  char *arg = command + 6; // skip "filter"
+  while (*arg == ' ') arg++;
+
+  if (*arg == 0 || strcmp(arg, "list") == 0) {
+    char *dp = reply;
+    dp += sprintf(dp, "channels:%d keywords:%d senders:%d filtered:%u", num_filter_channels,
+                  num_block_keywords, num_block_senders, (unsigned)n_filtered);
+    for (int i = 0; i < num_block_keywords && dp - reply < 120; i++) dp += sprintf(dp, "\nK:%s", block_keywords[i]);
+    for (int i = 0; i < num_block_senders && dp - reply < 120; i++) dp += sprintf(dp, "\nS:%s", block_senders[i]);
+    return;
+  }
+  if (memcmp(arg, "channel ", 8) == 0) {
+    char *val = arg + 8;
+    while (*val == ' ') val++;
+    if (strcmp(val, "clear") == 0) {
+      num_filter_channels = 0;
+      saveChannelFilter();
+      strcpy(reply, "OK - channels cleared");
+    } else if (addFilterChannel(val)) {
+      saveChannelFilter();
+      sprintf(reply, "OK - %d channel(s)", num_filter_channels);
+    } else {
+      strcpy(reply, "Err - bad PSK or list full");
+    }
+    return;
+  }
+  if (memcmp(arg, "block ", 6) == 0) {
+    char *val = arg + 6;
+    while (*val == ' ') val++;
+    if (*val == 0) { strcpy(reply, "Err - empty keyword"); return; }
+    if (num_block_keywords >= MAX_FILTER_TERMS) { strcpy(reply, "Err - keyword list full"); return; }
+    StrHelper::strncpy(block_keywords[num_block_keywords++], val, FILTER_TERM_LEN);
+    saveChannelFilter();
+    sprintf(reply, "OK - %d keyword(s)", num_block_keywords);
+    return;
+  }
+  if (memcmp(arg, "sender ", 7) == 0) {
+    char *val = arg + 7;
+    while (*val == ' ') val++;
+    if (*val == 0) { strcpy(reply, "Err - empty sender"); return; }
+    if (num_block_senders >= MAX_FILTER_TERMS) { strcpy(reply, "Err - sender list full"); return; }
+    StrHelper::strncpy(block_senders[num_block_senders++], val, FILTER_TERM_LEN);
+    saveChannelFilter();
+    sprintf(reply, "OK - %d sender(s)", num_block_senders);
+    return;
+  }
+  if (strcmp(arg, "clear") == 0) {
+    num_block_keywords = 0;
+    num_block_senders = 0;
+    saveChannelFilter();
+    strcpy(reply, "OK - blocks cleared");
+    return;
+  }
+  if (strcmp(arg, "reset") == 0) {
+    num_filter_channels = num_block_keywords = num_block_senders = 0;
+    saveChannelFilter();
+    strcpy(reply, "OK - filter reset");
+    return;
+  }
+  strcpy(reply, "Err - usage: filter [list|channel <b64|public|clear>|block <kw>|sender <name>|clear|reset]");
+}
+
 static bool isShare(const mesh::Packet *packet) {
   if (packet->hasTransportCodes()) {
     return packet->transport_codes[0] == 0 && packet->transport_codes[1] == 0;  // codes { 0, 0 } means 'send to nowhere'
@@ -862,6 +1085,10 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 {
   last_millis = 0;
   uptime_millis = 0;
+  num_filter_channels = 0;
+  num_block_keywords = 0;
+  num_block_senders = 0;
+  n_filtered = 0;
   next_local_advert = next_flood_advert = 0;
   dirty_contacts_expiry = 0;
   set_radio_at = revert_radio_at = 0;
@@ -930,6 +1157,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
   // load persisted prefs
   _cli.loadPrefs(_fs);
   acl.load(_fs, self_id);
+  loadChannelFilter();
   // TODO: key_store.begin();
   region_map.load(_fs);
 
@@ -1257,6 +1485,8 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       sendNodeDiscoverReq();
       strcpy(reply, "OK - Discover sent");
     }
+  } else if (memcmp(command, "filter", 6) == 0 && (command[6] == 0 || command[6] == ' ')) {
+    handleFilterCommand(command, reply);
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
   }

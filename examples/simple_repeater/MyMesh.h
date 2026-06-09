@@ -79,6 +79,16 @@ struct NeighbourInfo {
 #define FIRMWARE_ROLE "repeater"
 
 #define PACKET_LOG_FILE  "/packet_log"
+#define CHANNEL_FILTER_FILE  "/channel_filter"
+
+#ifndef MAX_FILTER_CHANNELS
+  #define MAX_FILTER_CHANNELS  4
+#endif
+#ifndef MAX_FILTER_TERMS
+  #define MAX_FILTER_TERMS  8
+#endif
+#define FILTER_TERM_LEN     24
+#define FILTER_PSK_B64_LEN  48
 
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   FILESYSTEM* _fs;
@@ -113,6 +123,15 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
   uint8_t pending_sf;
   uint8_t pending_cr;
   int  matching_peer_indexes[MAX_CLIENTS];
+
+  mesh::GroupChannel filter_channels[MAX_FILTER_CHANNELS];
+  char filter_channel_psk[MAX_FILTER_CHANNELS][FILTER_PSK_B64_LEN];
+  uint8_t num_filter_channels;
+  char block_keywords[MAX_FILTER_TERMS][FILTER_TERM_LEN];
+  uint8_t num_block_keywords;
+  char block_senders[MAX_FILTER_TERMS][FILTER_TERM_LEN];
+  uint8_t num_block_senders;
+  uint32_t n_filtered;
 #if defined(WITH_RS232_BRIDGE)
   RS232Bridge bridge;
 #elif defined(WITH_ESPNOW_BRIDGE)
@@ -129,6 +148,11 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 
   File openAppend(const char* fname);
   bool isLooped(const mesh::Packet* packet, const uint8_t max_counters[]);
+
+  bool addFilterChannel(const char* psk_b64);
+  void loadChannelFilter();
+  void saveChannelFilter();
+  void handleFilterCommand(char* command, char* reply);
 
 protected:
   float getAirtimeBudgetFactor() const override {
@@ -167,6 +191,8 @@ protected:
 
   void onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
   int searchPeersByHash(const uint8_t* hash) override;
+  int searchChannelsByHash(const uint8_t* hash, mesh::GroupChannel channels[], int max_matches) override;
+  void onGroupDataRecv(mesh::Packet* packet, uint8_t type, const mesh::GroupChannel& channel, uint8_t* data, size_t len) override;
   void getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) override;
   void onAdvertRecv(mesh::Packet* packet, const mesh::Identity& id, uint32_t timestamp, const uint8_t* app_data, size_t app_data_len);
   void onPeerDataRecv(mesh::Packet* packet, uint8_t type, int sender_idx, const uint8_t* secret, uint8_t* data, size_t len) override;
