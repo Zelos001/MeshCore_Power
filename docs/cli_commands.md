@@ -6,7 +6,6 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 - [Operational](#operational)
 - [Neighbors](#neighbors-repeater-only)
-- [Channel Content Filter](#channel-content-filter-repeater-only)
 - [Statistics](#statistics)
 - [Logging](#logging)
 - [Information](#info)
@@ -17,6 +16,7 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
   - [ACL](#acl)
   - [Region Management](#region-management-v110)
     - [Region Examples](#region-examples)
+  - [Channel Content Filter](#channel-content-filter-when-channel-filtering-is-compiled-in)
   - [GPS](#gps-when-gps-support-is-compiled-in)
   - [Sensors](#sensors-when-sensor-support-is-compiled-in)
   - [Bridge](#bridge-when-bridge-support-is-compiled-in)
@@ -113,87 +113,6 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 **Usage:** 
 - `discover.neighbors`
-
----
-
-## Channel Content Filter (Repeater Only)
-
-> **Compile-time feature.** These commands only exist when the firmware is built with `-D WITH_CHANNEL_FILTER`. Without that build flag the feature is fully compiled out (no code, no storage, no CLI commands) and the repeater behaves exactly as stock.
-
-Lets a repeater decrypt channels it holds the key for, inspect the plaintext, and refuse to retransmit messages that match a blocked keyword or sender name. With nothing configured, behaviour is identical to a stock repeater.
-
-**How it works:** the repeater only decrypts channels you explicitly load a key for (see `filter channel`). For those channels it reads the sender name and message text; any message matching a blocked keyword (text, case-insensitive substring) or blocked sender (case-insensitive substring of the sender name) is dropped instead of forwarded. All other channels — and direct messages — are never decrypted and forward exactly as before.
-
-**Unicode handling:** before matching, both the message and your blocked terms are Unicode-folded so common evasion tricks don't slip through — look-alike characters (fullwidth, mathematical bold/italic, circled/squared letters, regional-indicator "flag" letters, and common Cyrillic/Greek homoglyphs) are mapped to the plain ASCII letter they imitate, accents are stripped, and zero-width / combining / variation-selector characters are removed.
-
-**Limitations:**
-- This only stops **this** repeater from forwarding the message. Other repeaters running stock firmware still forward it, so this thins coverage at your node rather than removing the message from the mesh.
-- Only works for channels whose key the repeater holds (the built-in public channel, plus any channel PSK you add).
-- Sender names are self-declared in the channel payload and easily spoofed, so `filter sender` is a weak control on its own.
-
-**Config storage:** persisted to `/channel_filter` on the node's filesystem.
-
-**Build flags:** `WITH_CHANNEL_FILTER` (required, enables the feature), `MAX_FILTER_CHANNELS` (default `4`), `MAX_FILTER_TERMS` (default `8`, applies to keywords and senders independently).
-
----
-
-### Show the current filter configuration
-**Usage:**
-- `filter`
-- `filter list`
-
-**Note:** Reports channel/keyword/sender counts, the lifetime filtered-message count, and the configured keyword and sender terms.
-
----
-
-### View or reset the filtered-message counter
-**Usage:**
-- `filter stats`
-- `filter stats reset`
-
-**Note:** `filter stats` reports `filtered:<n> channels:<n> keywords:<n> senders:<n>`. The counter is a runtime value and is not persisted, so it also resets on reboot.
-
----
-
-### Add or remove a channel to decrypt
-**Usage:**
-- `filter channel <psk>`
-- `filter channel public`
-- `filter channel clear`
-
-**Parameters:**
-- `psk`: Channel pre-shared key in Base64 (16 or 32 bytes when decoded), e.g. the value shared by a MeshCore client. The literal `public` is a shortcut for the well-known public channel key.
-
-**Note:** Adding a channel only enables decryption/inspection of that channel; messages still forward normally unless they match a blocked keyword or sender. `filter channel clear` removes all channel keys (the repeater stops decrypting and forwards everything blind again).
-
----
-
-### Block a keyword
-**Usage:**
-- `filter block <keyword>`
-
-**Parameters:**
-- `keyword`: Text to match (case-insensitive substring) against the message body. Max 23 characters.
-
-**Note:** Matches against the message text only, not the sender name.
-
----
-
-### Block a sender name
-**Usage:**
-- `filter sender <name>`
-
-**Parameters:**
-- `name`: Text to match (case-insensitive substring) against the sender's display name. Max 23 characters.
-
----
-
-### Clear or reset filter terms
-**Usage:**
-- `filter clear`
-- `filter reset`
-
-**Note:** `filter clear` empties the keyword and sender lists but keeps the loaded channel keys. `filter reset` wipes everything — channel keys, keywords and senders.
 
 ---
 
@@ -1003,6 +922,83 @@ region save
 - Adds nested `#NorthAmerica` hierarchy
 - Enables flooding for all child regions automatically
 - Useful for global networks with specific regional rules
+
+---
+
+### Channel Content Filter (When channel filtering is compiled in)
+
+Repeater only. Lets a repeater decrypt channels it holds the key for, inspect the plaintext, and refuse to retransmit messages that match a blocked keyword or sender name. With nothing configured, behaviour is identical to a stock repeater.
+
+**How it works:** the repeater only decrypts channels you explicitly load a key for (see `filter channel`). For those channels it reads the sender name and message text; any message matching a blocked keyword (text, case-insensitive substring) or blocked sender (case-insensitive substring of the sender name) is dropped instead of forwarded. All other channels — and direct messages — are never decrypted and forward exactly as before.
+
+**Unicode handling:** before matching, both the message and your blocked terms are Unicode-folded so common evasion tricks don't slip through — look-alike characters (fullwidth, mathematical bold/italic, circled/squared letters, regional-indicator "flag" letters, and common Cyrillic/Greek homoglyphs) are mapped to the plain ASCII letter they imitate, accents are stripped, and zero-width / combining / variation-selector characters are removed.
+
+**Limitations:**
+- This only stops **this** repeater from forwarding the message. Other repeaters running stock firmware still forward it, so this thins coverage at your node rather than removing the message from the mesh.
+- Only works for channels whose key the repeater holds (the built-in public channel, plus any channel PSK you add).
+- Sender names are self-declared in the channel payload and easily spoofed, so `filter sender` is a weak control on its own.
+
+**Config storage:** persisted to `/channel_filter` on the node's filesystem.
+
+---
+
+#### Show the current filter configuration
+**Usage:**
+- `filter`
+- `filter list`
+
+**Note:** Reports channel/keyword/sender counts, the lifetime filtered-message count, and the configured keyword and sender terms.
+
+---
+
+#### View or reset the filtered-message counter
+**Usage:**
+- `filter stats`
+- `filter stats reset`
+
+**Note:** `filter stats` reports `filtered:<n> channels:<n> keywords:<n> senders:<n>`. The counter is a runtime value and is not persisted, so it also resets on reboot.
+
+---
+
+#### Add or remove a channel to decrypt
+**Usage:**
+- `filter channel <psk>`
+- `filter channel public`
+- `filter channel clear`
+
+**Parameters:**
+- `psk`: Channel pre-shared key in Base64 (16 or 32 bytes when decoded), e.g. the value shared by a MeshCore client. The literal `public` is a shortcut for the well-known public channel key.
+
+**Note:** Adding a channel only enables decryption/inspection of that channel; messages still forward normally unless they match a blocked keyword or sender. `filter channel clear` removes all channel keys (the repeater stops decrypting and forwards everything blind again).
+
+---
+
+#### Block a keyword
+**Usage:**
+- `filter block <keyword>`
+
+**Parameters:**
+- `keyword`: Text to match (case-insensitive substring) against the message body. Max 23 characters.
+
+**Note:** Matches against the message text only, not the sender name.
+
+---
+
+#### Block a sender name
+**Usage:**
+- `filter sender <name>`
+
+**Parameters:**
+- `name`: Text to match (case-insensitive substring) against the sender's display name. Max 23 characters.
+
+---
+
+#### Clear or reset filter terms
+**Usage:**
+- `filter clear`
+- `filter reset`
+
+**Note:** `filter clear` empties the keyword and sender lists but keeps the loaded channel keys. `filter reset` wipes everything — channel keys, keywords and senders.
 
 ---
 ### GPS (When GPS support is compiled in)
