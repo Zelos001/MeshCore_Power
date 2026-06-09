@@ -28,7 +28,7 @@ MeshCore provides the ability to create wireless mesh networks, similar to Mesht
 
 ## 🚀 How to Get Started
 
-- Watch the [MeshCore Intro Video](https://www.youtube.com/watch?v=t1qne8uJBAc) by Andy Kirby.
+- Watch the [MeshCore QuickStart Playlist](https://www.youtube.com/watch?v=iaFltojJrAc&list=PLshzThxhw4O4WU_iZo3NmNZOv6KMrUuF9) by The Comms Channel
 - Watch the [MeshCore Technical Presentation](https://www.youtube.com/watch?v=OwmkVkZQTf4) by Liam Cottle.
 - Read through our [Frequently Asked Questions](./docs/faq.md) and [Documentation](https://docs.meshcore.io).
 - Flash the MeshCore firmware on a supported device.
@@ -72,7 +72,7 @@ The companion firmware can be connected to via BLE, USB or Wi-Fi depending on th
 
 **Repeater and Room Server Firmware**
 
-The repeater and room server firmwares can be setup via USB in the web config tool.
+The repeater and room server firmware can be set up via USB in the web config tool.
 
 - https://config.meshcore.io
 
@@ -89,7 +89,7 @@ MeshCore is open-source software released under the MIT License. You are free to
 ## Contributing
 
 Please submit PR's using 'dev' as the base branch!
-For minor changes just submit your PR and we'll try to review it, but for anything more 'impactful' please open an Issue first and start a discussion. Is better to sound out what it is you want to achieve first, and try to come to a consensus on what the best approach is, especially when it impacts the structure or architecture of this codebase.
+For minor changes just submit your PR and we'll try to review it, but for anything more 'impactful' please open an Issue first and start a discussion. It is better to sound out what it is you want to achieve first, and try to come to a consensus on what the best approach is, especially when it impacts the structure or architecture of this codebase.
 
 Here are some general principles you should try to adhere to:
 * Keep it simple. Please, don't think like a high-level lang programmer. Think embedded, and keep code concise, without any unnecessary layers.
