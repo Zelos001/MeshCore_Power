@@ -118,6 +118,8 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 
 ## Channel Content Filter (Repeater Only)
 
+> **Compile-time feature.** These commands only exist when the firmware is built with `-D WITH_CHANNEL_FILTER`. Without that build flag the feature is fully compiled out (no code, no storage, no CLI commands) and the repeater behaves exactly as stock.
+
 Lets a repeater decrypt channels it holds the key for, inspect the plaintext, and refuse to retransmit messages that match a blocked keyword or sender name. With nothing configured, behaviour is identical to a stock repeater.
 
 **How it works:** the repeater only decrypts channels you explicitly load a key for (see `filter channel`). For those channels it reads the sender name and message text; any message matching a blocked keyword (text, case-insensitive substring) or blocked sender (case-insensitive substring of the sender name) is dropped instead of forwarded. All other channels — and direct messages — are never decrypted and forward exactly as before.
@@ -131,7 +133,7 @@ Lets a repeater decrypt channels it holds the key for, inspect the plaintext, an
 
 **Config storage:** persisted to `/channel_filter` on the node's filesystem.
 
-**Build flags:** `MAX_FILTER_CHANNELS` (default `4`), `MAX_FILTER_TERMS` (default `8`, applies to keywords and senders independently).
+**Build flags:** `WITH_CHANNEL_FILTER` (required, enables the feature), `MAX_FILTER_CHANNELS` (default `4`), `MAX_FILTER_TERMS` (default `8`, applies to keywords and senders independently).
 
 ---
 

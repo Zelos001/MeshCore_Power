@@ -1,7 +1,9 @@
 #include "MyMesh.h"
-#include "UnicodeFold.h"
 #include <algorithm>
 #include <ctype.h>
+
+#ifdef WITH_CHANNEL_FILTER
+#include "UnicodeFold.h"
 
 /* --------------------- public-channel content filter ------------------ */
 
@@ -35,6 +37,7 @@ static int decodeBase64(const char* in, uint8_t* out, int max_out) {
   }
   return n;
 }
+#endif  // WITH_CHANNEL_FILTER
 
 
 /* ------------------------------ Config -------------------------------- */
@@ -663,6 +666,7 @@ void MyMesh::getPeerSharedSecret(uint8_t *dest_secret, int peer_idx) {
   }
 }
 
+#ifdef WITH_CHANNEL_FILTER
 bool MyMesh::addFilterChannel(const char *psk_b64) {
   if (num_filter_channels >= MAX_FILTER_CHANNELS) return false;
 
@@ -865,6 +869,7 @@ void MyMesh::handleFilterCommand(char *command, char *reply) {
   }
   strcpy(reply, "Err - usage: filter [list|stats [reset]|channel <b64|public|clear>|block <kw>|sender <name>|clear|reset]");
 }
+#endif  // WITH_CHANNEL_FILTER
 
 static bool isShare(const mesh::Packet *packet) {
   if (packet->hasTransportCodes()) {
@@ -1101,10 +1106,12 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
 {
   last_millis = 0;
   uptime_millis = 0;
+#ifdef WITH_CHANNEL_FILTER
   num_filter_channels = 0;
   num_block_keywords = 0;
   num_block_senders = 0;
   n_filtered = 0;
+#endif
   next_local_advert = next_flood_advert = 0;
   dirty_contacts_expiry = 0;
   set_radio_at = revert_radio_at = 0;
@@ -1173,7 +1180,9 @@ void MyMesh::begin(FILESYSTEM *fs) {
   // load persisted prefs
   _cli.loadPrefs(_fs);
   acl.load(_fs, self_id);
+#ifdef WITH_CHANNEL_FILTER
   loadChannelFilter();
+#endif
   // TODO: key_store.begin();
   region_map.load(_fs);
 
@@ -1501,8 +1510,10 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       sendNodeDiscoverReq();
       strcpy(reply, "OK - Discover sent");
     }
+#ifdef WITH_CHANNEL_FILTER
   } else if (memcmp(command, "filter", 6) == 0 && (command[6] == 0 || command[6] == ' ')) {
     handleFilterCommand(command, reply);
+#endif
   } else{
     _cli.handleCommand(sender_timestamp, command, reply);  // common CLI commands
   }
