@@ -1,4 +1,5 @@
 #include "MyMesh.h"
+#include "UnicodeFold.h"
 #include <algorithm>
 #include <ctype.h>
 
@@ -35,16 +36,6 @@ static int decodeBase64(const char* in, uint8_t* out, int max_out) {
   return n;
 }
 
-static bool icontains(const char* haystack, const char* needle) {
-  if (!*needle) return false;
-  for (const char* h = haystack; *h; h++) {
-    const char* a = h;
-    const char* b = needle;
-    while (*a && *b && tolower((unsigned char)*a) == tolower((unsigned char)*b)) { a++; b++; }
-    if (!*b) return true;
-  }
-  return false;
-}
 
 /* ------------------------------ Config -------------------------------- */
 
@@ -715,21 +706,33 @@ void MyMesh::onGroupDataRecv(mesh::Packet *packet, uint8_t type, const mesh::Gro
   const char *sep = strstr(msg, ": ");
   const char *text = sep ? sep + 2 : msg;
 
-  bool blocked = false;
-  const char *reason = "keyword";
+  // Unicode-fold both sides so homoglyph / zero-width tricks can't evade the
+  // blocklist (see UnicodeFold.h). Terms are folded the same way at match time.
+  char folded_text[MAX_PACKET_PAYLOAD];
+  ufold::foldUtf8(text, folded_text, sizeof(folded_text));
 
+  char folded_sender[40];
+  folded_sender[0] = 0;
   if (sep) {
-    char sender[FILTER_TERM_LEN];
+    char sender[40];
     int slen = sep - msg;
     if (slen >= (int)sizeof(sender)) slen = sizeof(sender) - 1;
     memcpy(sender, msg, slen);
     sender[slen] = 0;
-    for (int i = 0; i < num_block_senders && !blocked; i++) {
-      if (icontains(sender, block_senders[i])) { blocked = true; reason = "sender"; }
-    }
+    ufold::foldUtf8(sender, folded_sender, sizeof(folded_sender));
+  }
+
+  bool blocked = false;
+  const char *reason = "keyword";
+  char fterm[FILTER_TERM_LEN];
+
+  for (int i = 0; i < num_block_senders && !blocked; i++) {
+    ufold::foldUtf8(block_senders[i], fterm, sizeof(fterm));
+    if (fterm[0] && strstr(folded_sender, fterm)) { blocked = true; reason = "sender"; }
   }
   for (int i = 0; i < num_block_keywords && !blocked; i++) {
-    if (icontains(text, block_keywords[i])) blocked = true;
+    ufold::foldUtf8(block_keywords[i], fterm, sizeof(fterm));
+    if (fterm[0] && strstr(folded_text, fterm)) blocked = true;
   }
 
   if (blocked) {
