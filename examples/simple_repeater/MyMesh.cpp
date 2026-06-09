@@ -735,6 +735,7 @@ void MyMesh::onGroupDataRecv(mesh::Packet *packet, uint8_t type, const mesh::Gro
   if (blocked) {
     packet->markDoNotRetransmit(); // routeRecvPacket() will now release instead of forwarding
     n_filtered++;
+    MESH_DEBUG_PRINTLN("filter: dropping channel msg (%s): %s", reason, msg);
     if (_logging) {
       File f = openAppend(PACKET_LOG_FILE);
       if (f) {
@@ -799,6 +800,18 @@ void MyMesh::handleFilterCommand(char *command, char *reply) {
     for (int i = 0; i < num_block_senders && dp - reply < 120; i++) dp += sprintf(dp, "\nS:%s", block_senders[i]);
     return;
   }
+  if (memcmp(arg, "stats", 5) == 0 && (arg[5] == 0 || arg[5] == ' ')) {
+    char *sub = arg + 5;
+    while (*sub == ' ') sub++;
+    if (strcmp(sub, "reset") == 0) {
+      n_filtered = 0;
+      strcpy(reply, "OK - stats reset");
+    } else {
+      sprintf(reply, "filtered:%u channels:%d keywords:%d senders:%d", (unsigned)n_filtered,
+              num_filter_channels, num_block_keywords, num_block_senders);
+    }
+    return;
+  }
   if (memcmp(arg, "channel ", 8) == 0) {
     char *val = arg + 8;
     while (*val == ' ') val++;
@@ -847,7 +860,7 @@ void MyMesh::handleFilterCommand(char *command, char *reply) {
     strcpy(reply, "OK - filter reset");
     return;
   }
-  strcpy(reply, "Err - usage: filter [list|channel <b64|public|clear>|block <kw>|sender <name>|clear|reset]");
+  strcpy(reply, "Err - usage: filter [list|stats [reset]|channel <b64|public|clear>|block <kw>|sender <name>|clear|reset]");
 }
 
 static bool isShare(const mesh::Packet *packet) {
