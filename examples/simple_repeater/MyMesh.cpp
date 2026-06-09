@@ -1,6 +1,5 @@
 #include "MyMesh.h"
 #include <algorithm>
-#include <ctype.h>
 
 #ifdef WITH_CHANNEL_FILTER
 #include "UnicodeFold.h"
@@ -703,17 +702,19 @@ void MyMesh::onGroupDataRecv(mesh::Packet *packet, uint8_t type, const mesh::Gro
   if (type != PAYLOAD_TYPE_GRP_TXT) return; // only inspect channel text messages
   if (len < 6) return;
   if ((data[4] >> 2) != 0) return; // not a plain-text message
+  if (len >= MAX_PACKET_PAYLOAD) return; // crafted over-long payload; avoid OOB on data[len]
 
   data[len] = 0; // make a C string: "sender_name: text"
   const char *msg = (const char *)&data[5];
 
   const char *sep = strstr(msg, ": ");
-  const char *text = sep ? sep + 2 : msg;
 
-  // Unicode-fold both sides so homoglyph / zero-width tricks can't evade the
-  // blocklist (see UnicodeFold.h). Terms are folded the same way at match time.
-  char folded_text[MAX_PACKET_PAYLOAD];
-  ufold::foldUtf8(text, folded_text, sizeof(folded_text));
+  // Unicode-fold so homoglyph / zero-width tricks can't evade the blocklist (see
+  // UnicodeFold.h). Keywords match the whole message (sender + text) so a blocked
+  // word can't be hidden in the self-declared sender name. Terms are folded the
+  // same way at match time.
+  char folded_msg[MAX_PACKET_PAYLOAD];
+  ufold::foldUtf8(msg, folded_msg, sizeof(folded_msg));
 
   char folded_sender[40];
   folded_sender[0] = 0;
@@ -736,7 +737,7 @@ void MyMesh::onGroupDataRecv(mesh::Packet *packet, uint8_t type, const mesh::Gro
   }
   for (int i = 0; i < num_block_keywords && !blocked; i++) {
     ufold::foldUtf8(block_keywords[i], fterm, sizeof(fterm));
-    if (fterm[0] && strstr(folded_text, fterm)) blocked = true;
+    if (fterm[0] && strstr(folded_msg, fterm)) blocked = true;
   }
 
   if (blocked) {

@@ -1155,9 +1155,9 @@ Repeater only. Lets a repeater decrypt channels it holds the key for, inspect th
 - `filter block <keyword>`
 
 **Parameters:**
-- `keyword`: Text to match (case-insensitive substring) against the message body. Max 23 characters.
+- `keyword`: Text to match (case-insensitive substring) against the whole message. Max 23 characters.
 
-**Note:** Matches against the message text only, not the sender name.
+**Note:** Matches anywhere in the message — both the body and the sender name — so a blocked word can't be hidden in a self-declared sender name.
 
 ---
 
