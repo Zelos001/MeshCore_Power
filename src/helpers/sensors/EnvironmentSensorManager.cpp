@@ -398,9 +398,18 @@ static void query_ina260(uint8_t ch, uint8_t, CayenneLPP& lpp) {
 #endif
 
 #if ENV_INCLUDE_INA226
+// Documented in the robtillaart INA226 header as the expected getDieID() value.
+#define INA226_EXPECTED_DIE_ID  0x2260
+
 static uint8_t init_ina226(TwoWire*, uint8_t) {
   // INA226 static instance was constructed with address and wire.
-  if (!INA226.begin()) return 0;
+  if (!INA226.begin())
+    return 0;
+
+  // begin() doesn't check chip ID
+  if (INA226.getDieID() != INA226_EXPECTED_DIE_ID)
+    return 0;
+
   INA226.setMaxCurrentShunt(TELEM_INA226_MAX_AMP, TELEM_INA226_SHUNT_VALUE);
   return 1;
 }
@@ -499,7 +508,8 @@ static void bsec_save_state() {
 
 static uint8_t init_bme680_bsec(TwoWire* wire, uint8_t addr) {
   bsec_iaq.begin(addr, *wire);
-  if (bsec_iaq.bsecStatus != BSEC_OK) return 0;
+  // bme68xStatus needs to be checked, it's set if the sensor doesn't report the expected ID
+  if (bsec_iaq.bsecStatus != BSEC_OK || bsec_iaq.bme68xStatus != BME68X_OK) return 0;
 
   bsec_iaq.setConfig(bsec_config_iaq);
   if (bsec_iaq.bsecStatus != BSEC_OK) return 0;
