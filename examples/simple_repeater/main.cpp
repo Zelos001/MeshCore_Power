@@ -96,7 +96,7 @@ void setup() {
   the_mesh.begin(fs);
 
 #ifdef WITH_FINDMY_BEACON
-  findmy_beacon.begin();
+  findmy_beacon.begin(rtc_clock);
   if (findmy_beacon.isRunning()) Serial.println("FindMy beacon started");
 #endif
 
@@ -156,6 +156,9 @@ void loop() {
 
   the_mesh.loop();
   sensors.loop();
+#ifdef WITH_FINDMY_BEACON
+  findmy_beacon.loop(millis());
+#endif
 #ifdef DISPLAY_CLASS
   ui_task.loop();
 #endif

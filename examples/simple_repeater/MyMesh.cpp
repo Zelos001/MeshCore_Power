@@ -1262,7 +1262,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, char *command, char *reply
       strcpy(reply, "OK - Discover sent");
     }
 #ifdef WITH_FINDMY_BEACON
-  } else if (findmy_beacon.handleCommand(command, reply)) {
+  } else if (findmy_beacon.handleCommand(sender_timestamp, command, reply)) {
     // FindMy beacon command handled (set/get findmy ...)
 #endif
   } else{
