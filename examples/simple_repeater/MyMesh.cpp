@@ -696,7 +696,6 @@ bool MyMesh::addFilterChannel(const char *psk) {
   if (len != 16 && len != 32) return false;
 
   mesh::Utils::sha256(ch->hash, sizeof(ch->hash), ch->secret, len);
-  StrHelper::strncpy(filter_channel_psk[num_filter_channels], psk, FILTER_PSK_LEN);
   num_filter_channels++;
   return true;
 }
@@ -781,32 +780,64 @@ void MyMesh::loadChannelFilter() {
 #endif
   if (!f) return;
 
-  char line[FILTER_PSK_LEN + 8];
-  while (f.available()) {
-    int n = f.readBytesUntil('\n', (uint8_t *)line, sizeof(line) - 1);
-    line[n] = 0;
-    while (n > 0 && (line[n - 1] == '\r' || line[n - 1] == ' ')) line[--n] = 0;
-    if (n < 3 || line[1] != ' ') continue;
+  if (f.read() != CHANNEL_FILTER_FMT) { f.close(); return; }  // unknown/legacy file -> start empty
 
-    const char *val = &line[2];
-    if (line[0] == 'C') {
-      addFilterChannel(val);
-    } else if (line[0] == 'K' && num_block_keywords < MAX_FILTER_TERMS) {
-      StrHelper::strncpy(block_keywords[num_block_keywords++], val, FILTER_TERM_LEN);
-    } else if (line[0] == 'S' && num_block_senders < MAX_FILTER_TERMS) {
-      StrHelper::strncpy(block_senders[num_block_senders++], val, FILTER_TERM_LEN);
-    }
+  int n = f.read();
+  if (n < 0 || n > MAX_FILTER_CHANNELS) { f.close(); return; }
+  for (int i = 0; i < n; i++) {
+    auto ch = &filter_channels[num_filter_channels];
+    if (f.readBytes((char *)ch->hash, sizeof(ch->hash)) != sizeof(ch->hash)) break;
+    if (f.readBytes((char *)ch->secret, sizeof(ch->secret)) != sizeof(ch->secret)) break;
+    num_filter_channels++;
+  }
+
+  n = f.read();
+  if (n < 0 || n > MAX_FILTER_TERMS) { f.close(); return; }
+  for (int i = 0; i < n; i++) {
+    int l = f.read();
+    if (l < 0 || l >= FILTER_TERM_LEN) break;
+    if (f.readBytes(block_keywords[num_block_keywords], l) != (size_t)l) break;
+    block_keywords[num_block_keywords][l] = 0;
+    num_block_keywords++;
+  }
+
+  n = f.read();
+  if (n < 0 || n > MAX_FILTER_TERMS) { f.close(); return; }
+  for (int i = 0; i < n; i++) {
+    int l = f.read();
+    if (l < 0 || l >= FILTER_TERM_LEN) break;
+    if (f.readBytes(block_senders[num_block_senders], l) != (size_t)l) break;
+    block_senders[num_block_senders][l] = 0;
+    num_block_senders++;
   }
   f.close();
 }
 
+// Binary layout: [fmt][n_chan]{hash[1] secret[32]}*  [n_kw]{len text}*  [n_snd]{len text}*
+// Channel keys are never displayed, so the decoded GroupChannel is stored directly
+// rather than the original PSK string.
 void MyMesh::saveChannelFilter() {
   _fs->remove(CHANNEL_FILTER_FILE);
   File f = openAppend(CHANNEL_FILTER_FILE);
   if (!f) return;
-  for (int i = 0; i < num_filter_channels; i++) f.printf("C %s\n", filter_channel_psk[i]);
-  for (int i = 0; i < num_block_keywords; i++) f.printf("K %s\n", block_keywords[i]);
-  for (int i = 0; i < num_block_senders; i++) f.printf("S %s\n", block_senders[i]);
+  f.write((uint8_t)CHANNEL_FILTER_FMT);
+  f.write((uint8_t)num_filter_channels);
+  for (int i = 0; i < num_filter_channels; i++) {
+    f.write(filter_channels[i].hash, sizeof(filter_channels[i].hash));
+    f.write(filter_channels[i].secret, sizeof(filter_channels[i].secret));
+  }
+  f.write((uint8_t)num_block_keywords);
+  for (int i = 0; i < num_block_keywords; i++) {
+    uint8_t l = strlen(block_keywords[i]);
+    f.write(l);
+    f.write((const uint8_t *)block_keywords[i], l);
+  }
+  f.write((uint8_t)num_block_senders);
+  for (int i = 0; i < num_block_senders; i++) {
+    uint8_t l = strlen(block_senders[i]);
+    f.write(l);
+    f.write((const uint8_t *)block_senders[i], l);
+  }
   f.close();
 }
 

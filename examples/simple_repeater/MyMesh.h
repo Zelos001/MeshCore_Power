@@ -90,7 +90,7 @@ struct NeighbourInfo {
   #define MAX_FILTER_TERMS  8
 #endif
 #define FILTER_TERM_LEN     24
-#define FILTER_PSK_LEN      68   // fits a 64-char hex key, a 44-char base64 PSK, or "public"
+#define CHANNEL_FILTER_FMT  1   // on-disk format version for CHANNEL_FILTER_FILE
 #endif
 
 class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
@@ -129,7 +129,6 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 
 #ifdef WITH_CHANNEL_FILTER
   mesh::GroupChannel filter_channels[MAX_FILTER_CHANNELS];
-  char filter_channel_psk[MAX_FILTER_CHANNELS][FILTER_PSK_LEN];
   uint8_t num_filter_channels;
   char block_keywords[MAX_FILTER_TERMS][FILTER_TERM_LEN];
   uint8_t num_block_keywords;
