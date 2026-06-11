@@ -36,6 +36,17 @@ static int decodeBase64(const char* in, uint8_t* out, int max_out) {
   }
   return n;
 }
+
+// A 16/32-byte key in hex is 32/64 chars; base64 PSKs are 24/44 chars, so the
+// length is unambiguous as long as every char is a hex digit.
+static bool isHexKey(const char* s) {
+  int n = 0;
+  for (const char* p = s; *p; p++, n++) {
+    char c = *p;
+    if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) return false;
+  }
+  return n == 32 || n == 64;
+}
 #endif  // WITH_CHANNEL_FILTER
 
 
@@ -666,23 +677,26 @@ void MyMesh::getPeerSharedSecret(uint8_t *dest_secret, int peer_idx) {
 }
 
 #ifdef WITH_CHANNEL_FILTER
-bool MyMesh::addFilterChannel(const char *psk_b64) {
+bool MyMesh::addFilterChannel(const char *psk) {
   if (num_filter_channels >= MAX_FILTER_CHANNELS) return false;
 
   auto ch = &filter_channels[num_filter_channels];
   memset(ch->secret, 0, sizeof(ch->secret));
 
   int len;
-  if (strcmp(psk_b64, "public") == 0) {
+  if (strcmp(psk, "public") == 0) {
     memcpy(ch->secret, PUBLIC_CHANNEL_SECRET, sizeof(PUBLIC_CHANNEL_SECRET));
     len = sizeof(PUBLIC_CHANNEL_SECRET);
+  } else if (isHexKey(psk)) {
+    len = strlen(psk) / 2;
+    if (!mesh::Utils::fromHex(ch->secret, len, psk)) return false;
   } else {
-    len = decodeBase64(psk_b64, ch->secret, sizeof(ch->secret));
+    len = decodeBase64(psk, ch->secret, sizeof(ch->secret));
   }
   if (len != 16 && len != 32) return false;
 
   mesh::Utils::sha256(ch->hash, sizeof(ch->hash), ch->secret, len);
-  StrHelper::strncpy(filter_channel_psk[num_filter_channels], psk_b64, FILTER_PSK_B64_LEN);
+  StrHelper::strncpy(filter_channel_psk[num_filter_channels], psk, FILTER_PSK_LEN);
   num_filter_channels++;
   return true;
 }
@@ -767,7 +781,7 @@ void MyMesh::loadChannelFilter() {
 #endif
   if (!f) return;
 
-  char line[FILTER_PSK_B64_LEN + 8];
+  char line[FILTER_PSK_LEN + 8];
   while (f.available()) {
     int n = f.readBytesUntil('\n', (uint8_t *)line, sizeof(line) - 1);
     line[n] = 0;
@@ -868,7 +882,7 @@ void MyMesh::handleFilterCommand(char *command, char *reply) {
     strcpy(reply, "OK - filter reset");
     return;
   }
-  strcpy(reply, "Err - usage: filter [list|stats [reset]|channel <b64|public|clear>|block <kw>|sender <name>|clear|reset]");
+  strcpy(reply, "Err - usage: filter [list|stats [reset]|channel <b64|hex|public|clear>|block <kw>|sender <name>|clear|reset]");
 }
 #endif  // WITH_CHANNEL_FILTER
 

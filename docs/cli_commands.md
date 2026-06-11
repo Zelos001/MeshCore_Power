@@ -1144,7 +1144,7 @@ Repeater only. Lets a repeater decrypt channels it holds the key for, inspect th
 - `filter channel clear`
 
 **Parameters:**
-- `psk`: Channel pre-shared key in Base64 (16 or 32 bytes when decoded), e.g. the value shared by a MeshCore client. The literal `public` is a shortcut for the well-known public channel key.
+- `psk`: Channel pre-shared key, as either Base64 (the form MeshCore clients share, e.g. `izOH6cXN6mrJ5e26oRXNcg==`) or raw hex (`62be0e1267c401381f4ea6f44217d7a9`). Either way it must decode to 16 or 32 bytes. The literal `public` is a shortcut for the well-known public channel key.
 
 **Note:** Adding a channel only enables decryption/inspection of that channel; messages still forward normally unless they match a blocked keyword or sender. `filter channel clear` removes all channel keys (the repeater stops decrypting and forwards everything blind again).
 
