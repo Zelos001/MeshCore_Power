@@ -686,8 +686,16 @@ static bool decodeChannelKey(const char *psk, mesh::GroupChannel *ch) {
     memcpy(ch->secret, PUBLIC_CHANNEL_SECRET, sizeof(PUBLIC_CHANNEL_SECRET));
     len = sizeof(PUBLIC_CHANNEL_SECRET);
   } else if (psk[0] == '#') {   // hashtag channel: key = first 16 bytes of SHA256(name)
+    // hashtag names are [a-z0-9-], so lowercase the input to forgive operator case
+    char name[40];
+    int n = 0;
+    for (; psk[n] && n < (int)sizeof(name) - 1; n++) {
+      char c = psk[n];
+      name[n] = (c >= 'A' && c <= 'Z') ? c + 32 : c;
+    }
+    name[n] = 0;
     uint8_t full[32];
-    mesh::Utils::sha256(full, sizeof(full), (const uint8_t *)psk, strlen(psk));
+    mesh::Utils::sha256(full, sizeof(full), (const uint8_t *)name, n);
     memcpy(ch->secret, full, 16);
     len = 16;
   } else if (isHexKey(psk)) {

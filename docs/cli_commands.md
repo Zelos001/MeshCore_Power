@@ -1146,7 +1146,7 @@ Repeater only. Lets a repeater decrypt channels it holds the key for, inspect th
 - `filter channel clear`
 
 **Parameters:**
-- `#name`: A hashtag channel, given by its name (e.g. `#selftest`). The key is derived the same way MeshCore clients derive it — the first 16 bytes of `SHA256("#name")` — so you don't need to paste a key. Only works for hashtag channels (named channels like `public` use a random key, not a name-derived one).
+- `#name`: A hashtag channel, given by its name (e.g. `#selftest`). The key is derived the same way MeshCore clients derive it — the first 16 bytes of `SHA256("#name")` — so you don't need to paste a key. Case-insensitive: the name is lowercased before hashing (hashtag names are `[a-z0-9-]`). Only works for hashtag channels (named channels like `public` use a random key, not a name-derived one).
 - `psk`: Channel pre-shared key, as either Base64 (the form MeshCore clients share, e.g. `izOH6cXN6mrJ5e26oRXNcg==`) or raw hex (`62be0e1267c401381f4ea6f44217d7a9`). Either way it must decode to 16 or 32 bytes. The literal `public` is a shortcut for the well-known public channel key.
 
 **Note:** Adding a channel only enables decryption/inspection of that channel; messages still forward normally unless they match a blocked keyword or sender. `filter channel remove <key>` drops a single channel — give it the same `#name`/PSK/`public` you added it with (it's matched by the resulting key, so any equivalent form works). `filter channel clear` removes all channel keys (the repeater stops decrypting and forwards everything blind again).
