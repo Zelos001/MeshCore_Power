@@ -687,6 +687,11 @@ bool MyMesh::addFilterChannel(const char *psk) {
   if (strcmp(psk, "public") == 0) {
     memcpy(ch->secret, PUBLIC_CHANNEL_SECRET, sizeof(PUBLIC_CHANNEL_SECRET));
     len = sizeof(PUBLIC_CHANNEL_SECRET);
+  } else if (psk[0] == '#') {   // hashtag channel: key = first 16 bytes of SHA256(name)
+    uint8_t full[32];
+    mesh::Utils::sha256(full, sizeof(full), (const uint8_t *)psk, strlen(psk));
+    memcpy(ch->secret, full, 16);
+    len = 16;
   } else if (isHexKey(psk)) {
     len = strlen(psk) / 2;
     if (!mesh::Utils::fromHex(ch->secret, len, psk)) return false;
@@ -913,7 +918,7 @@ void MyMesh::handleFilterCommand(char *command, char *reply) {
     strcpy(reply, "OK - filter reset");
     return;
   }
-  strcpy(reply, "Err - usage: filter [list|stats [reset]|channel <b64|hex|public|clear>|block <kw>|sender <name>|clear|reset]");
+  strcpy(reply, "Err - usage: filter [list|stats [reset]|channel <#name|b64|hex|public|clear>|block <kw>|sender <name>|clear|reset]");
 }
 #endif  // WITH_CHANNEL_FILTER
 
