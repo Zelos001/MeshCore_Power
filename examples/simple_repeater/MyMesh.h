@@ -155,6 +155,7 @@ class MyMesh : public mesh::Mesh, public CommonCLICallbacks {
 
 #ifdef WITH_CHANNEL_FILTER
   bool addFilterChannel(const char* psk);
+  bool removeFilterChannel(const char* psk);
   void loadChannelFilter();
   void saveChannelFilter();
   void handleFilterCommand(char* command, char* reply);

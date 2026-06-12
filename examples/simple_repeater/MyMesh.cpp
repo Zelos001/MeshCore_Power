@@ -677,10 +677,8 @@ void MyMesh::getPeerSharedSecret(uint8_t *dest_secret, int peer_idx) {
 }
 
 #ifdef WITH_CHANNEL_FILTER
-bool MyMesh::addFilterChannel(const char *psk) {
-  if (num_filter_channels >= MAX_FILTER_CHANNELS) return false;
-
-  auto ch = &filter_channels[num_filter_channels];
+// Resolve a channel spec (#name | hex | base64 | "public") into a GroupChannel.
+static bool decodeChannelKey(const char *psk, mesh::GroupChannel *ch) {
   memset(ch->secret, 0, sizeof(ch->secret));
 
   int len;
@@ -701,8 +699,27 @@ bool MyMesh::addFilterChannel(const char *psk) {
   if (len != 16 && len != 32) return false;
 
   mesh::Utils::sha256(ch->hash, sizeof(ch->hash), ch->secret, len);
+  return true;
+}
+
+bool MyMesh::addFilterChannel(const char *psk) {
+  if (num_filter_channels >= MAX_FILTER_CHANNELS) return false;
+  if (!decodeChannelKey(psk, &filter_channels[num_filter_channels])) return false;
   num_filter_channels++;
   return true;
+}
+
+bool MyMesh::removeFilterChannel(const char *psk) {
+  mesh::GroupChannel ch;
+  if (!decodeChannelKey(psk, &ch)) return false;
+  for (int i = 0; i < num_filter_channels; i++) {
+    if (memcmp(filter_channels[i].secret, ch.secret, sizeof(ch.secret)) == 0) {
+      for (int j = i; j < num_filter_channels - 1; j++) filter_channels[j] = filter_channels[j + 1];
+      num_filter_channels--;
+      return true;
+    }
+  }
+  return false;  // no channel with that key
 }
 
 int MyMesh::searchChannelsByHash(const uint8_t *hash, mesh::GroupChannel channels[], int max_matches) {
@@ -877,6 +894,15 @@ void MyMesh::handleFilterCommand(char *command, char *reply) {
       num_filter_channels = 0;
       saveChannelFilter();
       strcpy(reply, "OK - channels cleared");
+    } else if (memcmp(val, "remove ", 7) == 0) {
+      char *spec = val + 7;
+      while (*spec == ' ') spec++;
+      if (removeFilterChannel(spec)) {
+        saveChannelFilter();
+        sprintf(reply, "OK - %d channel(s)", num_filter_channels);
+      } else {
+        strcpy(reply, "Err - channel not found");
+      }
     } else if (addFilterChannel(val)) {
       saveChannelFilter();
       sprintf(reply, "OK - %d channel(s)", num_filter_channels);
@@ -918,7 +944,7 @@ void MyMesh::handleFilterCommand(char *command, char *reply) {
     strcpy(reply, "OK - filter reset");
     return;
   }
-  strcpy(reply, "Err - usage: filter [list|stats [reset]|channel <#name|b64|hex|public|clear>|block <kw>|sender <name>|clear|reset]");
+  strcpy(reply, "Err - usage: filter [list|stats [reset]|channel <#name|b64|hex|public|remove <key>|clear>|block <kw>|sender <name>|clear|reset]");
 }
 #endif  // WITH_CHANNEL_FILTER
 
