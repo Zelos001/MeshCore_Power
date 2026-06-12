@@ -1153,23 +1153,27 @@ Repeater only. Lets a repeater decrypt channels it holds the key for, inspect th
 
 ---
 
-#### Block a keyword
+#### Block or unblock a keyword
 **Usage:**
 - `filter block <keyword>`
+- `filter unblock <keyword>`
 
 **Parameters:**
 - `keyword`: Text to match (case-insensitive substring) against the whole message. Max 23 characters.
 
-**Note:** Matches anywhere in the message — both the body and the sender name — so a blocked word can't be hidden in a self-declared sender name.
+**Note:** Matches anywhere in the message — both the body and the sender name — so a blocked word can't be hidden in a self-declared sender name. `filter unblock <keyword>` removes a single keyword; give it the exact term as stored (`filter list` shows them under `K:`).
 
 ---
 
-#### Block a sender name
+#### Block or unblock a sender name
 **Usage:**
 - `filter sender <name>`
+- `filter unsender <name>`
 
 **Parameters:**
 - `name`: Text to match (case-insensitive substring) against the sender's display name. Max 23 characters.
+
+**Note:** `filter unsender <name>` removes a single sender; give it the exact term as stored (`filter list` shows them under `S:`).
 
 ---
 

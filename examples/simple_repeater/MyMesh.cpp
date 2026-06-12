@@ -722,6 +722,18 @@ bool MyMesh::removeFilterChannel(const char *psk) {
   return false;  // no channel with that key
 }
 
+// Remove an exact term from a keyword/sender list (shift the rest down).
+static bool removeFilterTerm(char terms[][FILTER_TERM_LEN], uint8_t &count, const char *val) {
+  for (int i = 0; i < count; i++) {
+    if (strcmp(terms[i], val) == 0) {
+      for (int j = i; j < count - 1; j++) memcpy(terms[j], terms[j + 1], FILTER_TERM_LEN);
+      count--;
+      return true;
+    }
+  }
+  return false;
+}
+
 int MyMesh::searchChannelsByHash(const uint8_t *hash, mesh::GroupChannel channels[], int max_matches) {
   int n = 0;
   for (int i = 0; i < num_filter_channels && n < max_matches; i++) {
@@ -931,6 +943,28 @@ void MyMesh::handleFilterCommand(char *command, char *reply) {
     sprintf(reply, "OK - %d sender(s)", num_block_senders);
     return;
   }
+  if (memcmp(arg, "unblock ", 8) == 0) {
+    char *val = arg + 8;
+    while (*val == ' ') val++;
+    if (removeFilterTerm(block_keywords, num_block_keywords, val)) {
+      saveChannelFilter();
+      sprintf(reply, "OK - %d keyword(s)", num_block_keywords);
+    } else {
+      strcpy(reply, "Err - keyword not found");
+    }
+    return;
+  }
+  if (memcmp(arg, "unsender ", 9) == 0) {
+    char *val = arg + 9;
+    while (*val == ' ') val++;
+    if (removeFilterTerm(block_senders, num_block_senders, val)) {
+      saveChannelFilter();
+      sprintf(reply, "OK - %d sender(s)", num_block_senders);
+    } else {
+      strcpy(reply, "Err - sender not found");
+    }
+    return;
+  }
   if (strcmp(arg, "clear") == 0) {
     num_block_keywords = 0;
     num_block_senders = 0;
@@ -944,7 +978,7 @@ void MyMesh::handleFilterCommand(char *command, char *reply) {
     strcpy(reply, "OK - filter reset");
     return;
   }
-  strcpy(reply, "Err - usage: filter [list|stats [reset]|channel <#name|b64|hex|public|remove <key>|clear>|block <kw>|sender <name>|clear|reset]");
+  strcpy(reply, "Err - usage: filter [list|stats [reset]|channel <#name|b64|hex|public|remove <key>|clear>|block/unblock <kw>|sender/unsender <name>|clear|reset]");
 }
 #endif  // WITH_CHANNEL_FILTER
 
