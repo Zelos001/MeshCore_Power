@@ -17,23 +17,23 @@ This guide describes how to build a MeshCore repeater using the compact **ESP32-
 |------------|--------------|-------------|
 | VCC        | 3.3V         | Power (3.3V) |
 | GND        | GND          | Ground |
-| NSS        | GPIO 8       | SPI Chip Select |
-| SCK        | GPIO 10      | SPI Clock |
-| MOSI       | GPIO 7       | SPI MOSI |
-| MISO       | GPIO 6       | SPI MISO |
-| DIO1       | GPIO 3       | Interrupt |
-| BUSY       | GPIO 4       | Busy Signal |
-| RESET      | GPIO 5       | Reset |
+| NSS        | GPIO 10      | SPI Chip Select |
+| SCK        | GPIO 2       | SPI Clock |
+| MOSI       | GPIO 4       | SPI MOSI |
+| MISO       | GPIO 3       | SPI MISO |
+| DIO1       | GPIO 5       | Interrupt |
+| BUSY       | GPIO 6       | Busy Signal |
+| RESET      | GPIO 7       | Reset |
 
 ### 2. ESP32-C3 to DS3231 (RTC)
-*Note: Make sure to use the I2C pins defined in the configuration (GPIO 1 & 2).*
+*Note: Make sure to use the I2C pins defined in the configuration (GPIO 8 & 9).*
 
 | DS3231 Pin | ESP32-C3 Pin | Description |
 |------------|--------------|-------------|
 | VCC        | 3.3V         | Power (3.3V) |
 | GND        | GND          | Ground |
-| SDA        | GPIO 1       | I2C Data |
-| SCL        | GPIO 2       | I2C Clock |
+| SDA        | GPIO 8       | I2C Data |
+| SCL        | GPIO 9       | I2C Clock |
 
 ### 3. Power Supply (TP4056)
 - **TP4056 B+ / B-**: Connect to the Battery terminals.
