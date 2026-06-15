@@ -285,6 +285,7 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
   if (packet->isRouteFlood()) {
     if (packet->getPathHashCount() >= _prefs.flood_max) return false;
     if (packet->getRouteType() == ROUTE_TYPE_FLOOD && packet->getPathHashCount() >= _prefs.flood_max_unscoped) return false;
+    if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT && packet->getPathHashCount() >= _prefs.flood_max_advert) return false;
   }
   return true;
 }
@@ -647,6 +648,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.flood_advert_interval = 47; // 47 hours
   _prefs.flood_max = 64;
   _prefs.flood_max_unscoped = 64;
+  _prefs.flood_max_advert = 8;
   _prefs.interference_threshold = 0; // disabled
 #ifdef ROOM_PASSWORD
   StrHelper::strncpy(_prefs.guest_password, ROOM_PASSWORD, sizeof(_prefs.guest_password));
@@ -656,6 +658,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.gps_enabled = 0;
   _prefs.gps_interval = 0;
   _prefs.advert_loc_policy = ADVERT_LOC_PREFS;
+  _prefs.radio_fem_rxgain = 1;
 
   next_post_idx = 0;
   next_client_idx = 0;
@@ -697,6 +700,7 @@ void MyMesh::begin(FILESYSTEM *fs) {
 
   radio_driver.setParams(_prefs.freq, _prefs.bw, _prefs.sf, _prefs.cr);
   radio_driver.setTxPower(_prefs.tx_power_dbm);
+  board.setLoRaFemLnaEnabled(_prefs.radio_fem_rxgain);
 
   updateAdvertTimer();
   updateFloodAdvertTimer();
@@ -1025,4 +1029,12 @@ void MyMesh::loop() {
   uint32_t now = millis();
   uptime_millis += now - last_millis;
   last_millis = now;
+}
+
+// To check if there is pending work
+bool MyMesh::hasPendingWork() const {
+#if defined(WITH_BRIDGE)
+  if (bridge.isRunning()) return true; // bridge needs WiFi radio, can't sleep
+#endif
+  return _mgr->getOutboundTotal() > 0;
 }

@@ -512,7 +512,8 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     file.read((uint8_t *)&_prefs->bridge_channel, sizeof(_prefs->bridge_channel));                 // 135
     file.read((uint8_t *)&_prefs->bridge_secret, sizeof(_prefs->bridge_secret));                   // 136
     file.read((uint8_t *)&_prefs->powersaving_enabled, sizeof(_prefs->powersaving_enabled));       // 152
-    file.read(pad, 3);                                                                             // 153
+    file.read((uint8_t *)&_prefs->reboot_interval, sizeof(_prefs->reboot_interval));               // 153
+    file.read(pad, 2);                                                                             // 154
     file.read((uint8_t *)&_prefs->gps_enabled, sizeof(_prefs->gps_enabled));                       // 156
     file.read((uint8_t *)&_prefs->gps_interval, sizeof(_prefs->gps_interval));                     // 157
     file.read((uint8_t *)&_prefs->advert_loc_policy, sizeof (_prefs->advert_loc_policy));          // 161
@@ -565,6 +566,12 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
                                               sizeof(_prefs->battery_alert_low_percent));        // 665
     size_t battery_alert_critical_read = file.read((uint8_t *)&_prefs->battery_alert_critical_percent,
                                                    sizeof(_prefs->battery_alert_critical_percent)); // 666
+    _prefs->flood_max_unscoped = 64;
+    size_t flood_max_unscoped_read = file.read((uint8_t *)&_prefs->flood_max_unscoped,
+                                               sizeof(_prefs->flood_max_unscoped));             // 667
+    _prefs->flood_max_advert = 8;
+    size_t flood_max_advert_read = file.read((uint8_t *)&_prefs->flood_max_advert,
+                                             sizeof(_prefs->flood_max_advert));                 // 668
     // PowerSaving-only prefs stored radio_fem_rxgain at 291, before direct retry timing existed.
     if (radio_fem_rxgain_read != sizeof(_prefs->radio_fem_rxgain)
         && legacy_retry_attempts_read == sizeof(legacy_retry_attempts_or_radio_fem_rxgain)
@@ -572,7 +579,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
             || _prefs->direct_retry_timing_magic[1] != DIRECT_RETRY_TIMING_MAGIC_1)) {
       _prefs->radio_fem_rxgain = constrain(legacy_retry_attempts_or_radio_fem_rxgain, 0, 1);
     }
-    // next: 667
+    // next: 669
 
     // sanitise bad pref values
     _prefs->rx_delay_base = constrain(_prefs->rx_delay_base, 0, 20.0f);
@@ -613,6 +620,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->bridge_channel = constrain(_prefs->bridge_channel, 0, 14);
 
     _prefs->powersaving_enabled = constrain(_prefs->powersaving_enabled, 0, 1);
+    _prefs->reboot_interval = constrain(_prefs->reboot_interval, 0, 255);
 
     _prefs->gps_enabled = constrain(_prefs->gps_enabled, 0, 1);
     _prefs->advert_loc_policy = constrain(_prefs->advert_loc_policy, 0, 2);
@@ -620,6 +628,16 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     // sanitise settings
     _prefs->rx_boosted_gain = constrain(_prefs->rx_boosted_gain, 0, 1); // boolean
     _prefs->radio_fem_rxgain = constrain(_prefs->radio_fem_rxgain, 0, 1); // boolean
+    if (flood_max_unscoped_read != sizeof(_prefs->flood_max_unscoped)) {
+      _prefs->flood_max_unscoped = 64;
+    } else {
+      _prefs->flood_max_unscoped = constrain(_prefs->flood_max_unscoped, 0, 64);
+    }
+    if (flood_max_advert_read != sizeof(_prefs->flood_max_advert)) {
+      _prefs->flood_max_advert = 8;
+    } else {
+      _prefs->flood_max_advert = constrain(_prefs->flood_max_advert, 0, 64);
+    }
     _prefs->retry_preset = retryPresetOrDefault(_prefs->retry_preset);
     if (retry_step_read != sizeof(_prefs->direct_retry_step_ms)) {
       _prefs->direct_retry_step_ms = retryPresetStepDefault(_prefs->retry_preset);
@@ -733,7 +751,8 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->bridge_channel, sizeof(_prefs->bridge_channel));                 // 135
     file.write((uint8_t *)&_prefs->bridge_secret, sizeof(_prefs->bridge_secret));                   // 136
     file.write((uint8_t *)&_prefs->powersaving_enabled, sizeof(_prefs->powersaving_enabled));       // 152
-    file.write(pad, 3);                                                                             // 153
+    file.write((uint8_t *)&_prefs->reboot_interval, sizeof(_prefs->reboot_interval));               // 153
+    file.write(pad, 2);                                                                             // 154
     file.write((uint8_t *)&_prefs->gps_enabled, sizeof(_prefs->gps_enabled));                       // 156
     file.write((uint8_t *)&_prefs->gps_interval, sizeof(_prefs->gps_interval));                     // 157
     file.write((uint8_t *)&_prefs->advert_loc_policy, sizeof(_prefs->advert_loc_policy));           // 161
@@ -764,7 +783,9 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->battery_alert_enabled, sizeof(_prefs->battery_alert_enabled)); // 664
     file.write((uint8_t *)&_prefs->battery_alert_low_percent, sizeof(_prefs->battery_alert_low_percent)); // 665
     file.write((uint8_t *)&_prefs->battery_alert_critical_percent, sizeof(_prefs->battery_alert_critical_percent)); // 666
-    // next: 667
+    file.write((uint8_t *)&_prefs->flood_max_unscoped, sizeof(_prefs->flood_max_unscoped)); // 667
+    file.write((uint8_t *)&_prefs->flood_max_advert, sizeof(_prefs->flood_max_advert)); // 668
+    // next: 669
 
     file.close();
   }
@@ -1825,6 +1846,24 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       strcpy(reply, "Error, cannot be negative");
     }
+  } else if (memcmp(config, "flood.max.unscoped ", 19) == 0) {
+    uint8_t m = atoi(&config[19]);
+    if (m <= 64) {
+      _prefs->flood_max_unscoped = m;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, max 64");
+    }
+  } else if (memcmp(config, "flood.max.advert ", 17) == 0) {
+    uint8_t m = atoi(&config[17]);
+    if (m <= 64) {
+      _prefs->flood_max_advert = m;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, max 64");
+    }
   } else if (memcmp(config, "flood.max ", 10) == 0) {
     uint8_t m = atoi(&config[10]);
     if (m <= 64) {
@@ -2091,6 +2130,19 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       _prefs->adc_multiplier = 0.0f;
       strcpy(reply, "Error: unsupported");
     };
+  } else if (memcmp(config, "reboot.interval ", 16) == 0) {
+    int hours = _atoi(&config[16]);
+    if (hours == 0) {
+      _prefs->reboot_interval = 0;
+      savePrefs();
+      strcpy(reply, "reboot.interval disabled");
+    } else if (hours < 1 || 255 < hours) {
+      strcpy(reply, "Error: interval range is 1-255 hours");
+    } else {
+      _prefs->reboot_interval = hours;
+      savePrefs();
+      sprintf(reply, "OK - reboot.interval set to %d", _prefs->reboot_interval);
+    }
   } else {
     strcpy(reply, "unknown config: ");
   }
@@ -2151,6 +2203,10 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %s", StrHelper::ftoa(_prefs->rx_delay_base));
   } else if (memcmp(config, "txdelay", 7) == 0) {
     sprintf(reply, "> %s", StrHelper::ftoa(_prefs->tx_delay_factor));
+  } else if (memcmp(config, "flood.max.advert", 16) == 0) {
+    sprintf(reply, "> %d", (uint32_t)_prefs->flood_max_advert);
+  } else if (memcmp(config, "flood.max.unscoped", 18) == 0) {
+    sprintf(reply, "> %d", (uint32_t)_prefs->flood_max_unscoped);
   } else if (memcmp(config, "flood.max", 9) == 0) {
     sprintf(reply, "> %d", (uint32_t)_prefs->flood_max);
   } else if (memcmp(config, "retry.preset", 12) == 0) {
@@ -2296,6 +2352,12 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
 #else
     strcpy(reply, "ERROR: Power management not supported");
 #endif
+  } else if (memcmp(config, "reboot.interval", 15) == 0) {
+    if (_prefs->reboot_interval == 0) {
+      strcpy(reply, "disabled");
+    } else {
+      sprintf(reply, "> %d", (uint8_t)_prefs->reboot_interval);
+    }
   } else {
     sprintf(reply, "??: %s", config);
   }

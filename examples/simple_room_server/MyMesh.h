@@ -27,11 +27,11 @@
 /* ------------------------------ Config -------------------------------- */
 
 #ifndef FIRMWARE_BUILD_DATE
-  #define FIRMWARE_BUILD_DATE   "19 Apr 2026"
+  #define FIRMWARE_BUILD_DATE   "6 Jun 2026"
 #endif
 
 #ifndef FIRMWARE_VERSION
-  #define FIRMWARE_VERSION   "v1.15.0"
+  #define FIRMWARE_VERSION   "v1.16.0"
 #endif
 
 #ifndef LORA_FREQ
@@ -222,4 +222,7 @@ public:
   void clearStats() override;
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   void loop();
+
+  // To check if there is pending work
+  bool hasPendingWork() const;
 };

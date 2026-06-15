@@ -93,6 +93,8 @@ struct NodePrefs { // persisted to file
   uint8_t multi_acks;
   float bw;
   uint8_t flood_max;
+  uint8_t flood_max_unscoped;
+  uint8_t flood_max_advert;
   uint8_t interference_threshold;
   uint8_t agc_reset_interval; // secs / 4
   // Bridge settings
@@ -104,6 +106,7 @@ struct NodePrefs { // persisted to file
   char bridge_secret[16]; // for XOR encryption of bridge packets (ESP-NOW only)
   // Power setting
   uint8_t powersaving_enabled; // boolean
+  uint8_t reboot_interval; // hours, 0-255 (default 0=disable)
   // Gps settings
   uint8_t gps_enabled;
   uint32_t gps_interval; // in seconds

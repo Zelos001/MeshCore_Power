@@ -705,6 +705,12 @@ bool MyMesh::allowPacketForward(const mesh::Packet *packet) {
     }
   }
 
+  if (packet->isRouteFlood()) {
+    if (packet->getPathHashCount() >= _prefs.flood_max) return false;
+    if (packet->getRouteType() == ROUTE_TYPE_FLOOD && packet->getPathHashCount() >= _prefs.flood_max_unscoped) return false;
+    if (packet->getPayloadType() == PAYLOAD_TYPE_ADVERT && packet->getPathHashCount() >= _prefs.flood_max_advert) return false;
+  }
+
   if (packet->isRouteFlood() && packet->getPathHashCount() >= _prefs.flood_max) return false;
   if (packet->isRouteFlood() && recv_pkt_region == NULL) {
     MESH_DEBUG_PRINTLN("allowPacketForward: unknown transport code, or wildcard not allowed for FLOOD packet");
@@ -1851,9 +1857,11 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
         mesh::Packet *reply =
             createDatagram(PAYLOAD_TYPE_RESPONSE, client->id, secret, reply_data, reply_len);
         if (reply) {
+
           if (hasUsablePath(client->out_path, client->out_path_len)) { // we have an out_path, so send DIRECT
             sendDirectWithAltPath(reply, client->out_path, client->out_path_len,
                                   client->alt_path, client->alt_path_len, SERVER_RESPONSE_DELAY);
+
           } else {
             sendFloodReply(reply, SERVER_RESPONSE_DELAY, packet->getPathHashSize());
           }
@@ -1885,9 +1893,11 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
 
         mesh::Packet *ack = createAck(ack_hash);
         if (ack) {
+
           if (hasUsablePath(client->out_path, client->out_path_len)) {
             sendDirectWithAltPath(ack, client->out_path, client->out_path_len,
                                   client->alt_path, client->alt_path_len, TXT_ACK_DELAY);
+
           } else {
             sendFloodReply(ack, TXT_ACK_DELAY, packet->getPathHashSize());
           }
@@ -1914,9 +1924,11 @@ void MyMesh::onPeerDataRecv(mesh::Packet *packet, uint8_t type, int sender_idx, 
 
         auto reply = createDatagram(PAYLOAD_TYPE_TXT_MSG, client->id, secret, temp, 5 + text_len);
         if (reply) {
+
           if (hasUsablePath(client->out_path, client->out_path_len)) {
             sendDirectWithAltPath(reply, client->out_path, client->out_path_len,
                                   client->alt_path, client->alt_path_len, CLI_REPLY_DELAY_MILLIS);
+
           } else {
             sendFloodReply(reply, CLI_REPLY_DELAY_MILLIS, packet->getPathHashSize());
           }
@@ -2091,6 +2103,8 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.advert_interval = DEFAULT_ADVERT_INTERVAL;
   _prefs.flood_advert_interval = DEFAULT_FLOOD_ADVERT_INTERVAL;
   _prefs.flood_max = 64;
+  _prefs.flood_max_unscoped = 64;
+  _prefs.flood_max_advert = 8;
   _prefs.interference_threshold = 0; // disabled
   _prefs.agc_reset_interval = DEFAULT_AGC_RESET_INTERVAL;
   _prefs.multi_acks = DEFAULT_MULTI_ACKS;
@@ -2544,7 +2558,9 @@ static bool parsePathCommand(char* raw, uint8_t* out_path, uint8_t& out_path_len
 
     int hex_len = strlen(token);
     if (!(hex_len == 2 || hex_len == 4 || hex_len == 6)) {
+
       err = "Err - each hop must be 1/2/3 bytes hex";
+
       return false;
     }
 
@@ -2552,12 +2568,16 @@ static bool parsePathCommand(char* raw, uint8_t* out_path, uint8_t& out_path_len
     if (hash_size == 0) {
       hash_size = hop_hash_size;
     } else if (hash_size != hop_hash_size) {
+
       err = "Err - mixed hash sizes in path";
+
       return false;
     }
 
     if (hop_count >= 63 || (hop_count + 1) * hash_size > MAX_PATH_SIZE) {
+
       err = "Err - path too long";
+
       return false;
     }
     if (!mesh::Utils::fromHex(&out_path[hop_count * hash_size], hash_size, token)) {
@@ -2682,6 +2702,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
     reply[0] = 0;
   } else if (strcmp(command, "get outpath") == 0
           || strcmp(command, "set outpath") == 0
+
           || strncmp(command, "set outpath ", 12) == 0
           || strcmp(command, "get altpath") == 0
           || strcmp(command, "set altpath") == 0
@@ -2696,6 +2717,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
                       reply, 160);
     } else {
       char* spec = command + 11;  // length of "set outpath"/"set altpath"
+
       if (*spec == ' ') spec++;
 
       uint8_t path[MAX_PATH_SIZE];
@@ -2703,6 +2725,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       const char* err = NULL;
       if (!parsePathCommand(spec, path, path_len, err)) {
         strcpy(reply, err ? err : "Err - invalid path");
+
       } else if (is_alt && path_len == OUT_PATH_FORCE_FLOOD) {
         strcpy(reply, "Err - bad params");
       } else {
@@ -2961,6 +2984,7 @@ void MyMesh::handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char *
       }
       free(sorted_recent);
     }
+
   } else if (memcmp(command, "discover.neighbors", 18) == 0) {
     const char* sub = command + 18;
     while (*sub == ' ') sub++;
