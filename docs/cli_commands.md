@@ -28,11 +28,24 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Usage:** 
 - `reboot`
 
+**Note:** No reply is sent.
+
+---
+
+### Power-off the node
+**Usage:**
+- `poweroff`, or
+- `shutdown`
+
+**Note:** No reply is sent.
+
 ---
 
 ### Reset the clock and reboot
 **Usage:**
 - `clkreboot`
+
+**Note:** No reply is sent.
 
 ---
 
@@ -923,6 +936,18 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Default:** empty
 
 **Note:** In non-bridge retry, an echo whose last hop matches an ignored prefix does not cancel a queued retry as successful. In bridge mode, ignored prefixes do not count as a heard bridge bucket or as the implicit catch-all bucket when bridge retry decides whether every target has repeated the flood.
+
+---
+
+#### Limit the number of hops for an advert flood message
+**Usage:**
+- `get flood.max.advert`
+- `set flood.max.advert <value>`
+
+**Parameters:**
+- `value`: Maximum flood hop count (0-64) for an advert packet
+
+**Default:** `8`
 
 ---
 
