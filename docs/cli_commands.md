@@ -1,4 +1,6 @@
-# MeshCore Repeater & Room Server CLI Commands
+# CLI Commands
+
+This document provides an overview of CLI commands that can be sent to MeshCore Repeaters, Room Servers and Sensors.
 
 ## Navigation
 
@@ -51,13 +53,19 @@
 - `time <epoch_seconds>`
 
 **Parameters:**
-- `epoc_seconds`: Unix epoc time
+- `epoch_seconds`: Unix epoch time
 
 ---
 
 ### Send a flood advert
 **Usage:** 
 - `advert`
+
+---
+
+### Send a zero-hop advert
+**Usage:**
+- `advert.zerohop`
 
 ---
 
@@ -94,11 +102,56 @@
 - `neighbor.remove <pubkey_prefix>`
 
 **Parameters:** 
-- `pubkey_prefix`: The public key of the node to remove from the neighbors list
+- `pubkey_prefix`: The public key of the node to remove from the neighbors list. This can be a short prefix or the full key. All neighbors matching the provided prefix will be removed.
+
+**Note:** You can remove all neighbors by sending a space character as the prefix. The space indicates an empty prefix, which matches all existing neighbors.
 
 ---
 
-### Get or set recent repeater fallback prefix/SNR
+### Discover zero hop neighbors
+
+**Usage:** 
+- `discover.neighbors`
+
+---
+
+### Send flood text to `#repeaters` channel
+
+**Usage:**
+- `send text.flood <message>`
+
+**Notes:**
+- Sends a `PAYLOAD_TYPE_GRP_TXT` flood message using the built-in `#repeaters` channel key.
+- Message format is `<node_name>: <message>`.
+
+---
+
+### View or change automatic low-battery alerts to `#repeaters`
+
+**Usage:**
+- `get battery.alert`
+- `set battery.alert <state>`
+- `get battery.alert.low`
+- `set battery.alert.low <percent>`
+- `get battery.alert.critical`
+- `set battery.alert.critical <percent>`
+
+**Parameters:**
+- `state`: `on` (enable) or `off` (disable)
+- `percent`: Battery percentage threshold
+
+**Default:** `off`
+
+**Default thresholds:** `20` for `battery.alert.low`, `10` for `battery.alert.critical`
+
+**Notes:**
+- When enabled, sends a `#repeaters` flood text warning if voltage is above `1 V` and the battery estimate is below `battery.alert.low`.
+- Warnings repeat every `24` hours, or every `12` hours below `battery.alert.critical`.
+- `battery.alert.critical` must be lower than `battery.alert.low`.
+
+---
+
+### Get or set recent repeater prefix/SNR
 **Usage:**
 - `get recent.repeater`
 - `get recent.repeater <page>`
@@ -112,11 +165,13 @@
 
 **Notes:**
 - `set` stores or updates the prefix in the recent repeater table.
+- Output rows are `prefix,snr` with optional `,l` for locked manual entries.
 - Rows are sorted by prefix width (3-byte, 2-byte, 1-byte), then SNR descending.
 - A full direct retry failure lowers the stored SNR by `0.25 dB`.
 - If a full failure has no row yet, it first seeds the row at the active retry cutoff + `2.5 dB`, then applies the `0.25 dB` penalty.
 - Serial CLI page size is fixed at `128` rows; choose page with `get recent.repeater <page>`.
 - Over LoRa remote CLI, page size is fixed at `7` rows; choose page with `get recent.repeater <page>`.
+- Repeaters can use adjacent entries in this table to short-circuit non-TRACE direct packets when this node appears later in the direct path.
 
 ---
 
@@ -156,7 +211,7 @@
 
 ---
 
-### End capture of rx log to node sotrage
+### End capture of rx log to node storage
 **Usage:** `log stop`
 
 ---
@@ -220,7 +275,21 @@
 
 **Default:** Varies by board
 
-**Notes:** This setting only controls the power level of the LoRa chip. Some nodes have an additional power amplifier stage which increases the total output. Referr to the node's manual for the correct setting to use. **Setting a value too high may violate the laws in your country.**
+**Notes:** This setting only controls the power level of the LoRa chip. Some nodes have an additional power amplifier stage which increases the total output. Refer to the node's manual for the correct setting to use. **Setting a value too high may violate the laws in your country.**
+
+---
+
+#### View or change the boosted receive gain mode
+**Usage:**
+- `get radio.rxgain`
+- `set radio.rxgain <state>`
+
+**Parameters:**
+- `state`: `on`|`off`
+
+**Default:** `off`
+
+**Note:** Only available on SX1262 and SX1268 based boards.
 
 ---
 
@@ -250,6 +319,37 @@
 **Default:** `869.525`
 
 **Note:** Requires reboot to apply
+**Serial Only:** `set freq <frequency>`
+
+---
+
+#### View or change this node's rx boosted gain mode (SX12xx only, v1.14.1+)
+**Usage:**
+- `get radio.rxgain`
+- `set radio.rxgain <state>`
+
+**Parameters:**
+  - `state`: `on`|`off`
+
+**Default:** `on`
+
+**Temporary Note:** If you upgraded from an older version to 1.14.1 without erasing flash, this setting is `off` because of [#2118](https://github.com/meshcore-dev/MeshCore/issues/2118)
+
+---
+
+#### View or change the LoRa FEM receive-path gain state on supported boards
+**Usage:**
+- `get radio.fem.rxgain`
+- `set radio.fem.rxgain <state>`
+
+**Parameters:**
+- `state`: `on`|`off`
+
+**Notes:**
+- This controls the external LoRa FEM receive-path LNA where the board supports it.
+- This is separate from `radio.rxgain`, which controls the radio chip receive gain mode.
+
+---
 
 ### System
 
@@ -313,19 +413,18 @@
 
 ---
 
-#### View or change this node's admin password
+#### Change this node's admin password
 **Usage:**
-- `get password`
-- `set password <password>`
+- `password <new_password>`
 
 **Parameters:**
-- `password`: Admin password
+- `new_password`: New admin password
 
 **Set by build flag:** `ADMIN_PASSWORD`
 
 **Default:** `password`
 
-**Note:** Echoed back for confirmation
+**Note:** Command reply echoes the updated password for confirmation.
 
 **Note:** Any node using this password will be added to the admin ACL list.
 
@@ -375,15 +474,32 @@
 
 ---
 
+#### View this node's public key
+**Usage:** `get public.key`
+
+---
+
+#### View this node's firmware version
+**Usage:** `ver`
+
+---
+
+#### View this node's configured role
+**Usage:** `get role`
+
+---
+
 #### View or change this node's power saving flag (Repeater Only)
 **Usage:**
-- `powersaving <state>`
 - `powersaving`
+- `powersaving on`
+- `powersaving off`
 
 **Parameters:** 
-- `state`: `on`|`off` 
+- `on`: enable power saving
+- `off`: disable power saving
 
-**Default:** `on`
+**Default:** `off`
 
 **Note:** When enabled, device enters sleep mode between radio transmissions
 
@@ -400,6 +516,46 @@
   - `state`: `on`|`off`
 
 **Default:** `on`
+
+---
+
+#### View or change this node's advert path hash size
+**Usage:**
+- `get path.hash.mode`
+- `set path.hash.mode <value>`
+
+**Parameters:**
+- `value`: Path hash size (0-2)
+  - `0`: 1 Byte hash size (256 unique ids)[64 max flood]
+  - `1`: 2 Byte hash size (65,536 unique ids)[32 max flood]
+  - `2`: 3 Byte hash size (16,777,216 unique ids)[21 max flood]
+  - `3`: DO NOT USE (Reserved) 
+
+**Default:** `0`
+
+**Note:** the 'path.hash.mode' sets the low-level ID/hash encoding size used when the repeater adverts. This setting has no impact on what packet ID/hash size this repeater forwards, all sizes should be forwarded on firmware >= 1.14. This feature was added in firmware 1.14
+
+**Temporary Note:** adverts with ID/hash sizes of 2 or 3 bytes may have limited flood propogation in your network while this feature is new as v1.13.0 firmware and older will drop packets with multibyte path ID/hashes as only 1-byte hashes are suppored. Consider your install base of firmware >=1.14 has reached a criticality for effective network flooding before implementing higher ID/hash sizes. 
+
+---
+
+#### View or change this node's loop detection
+**Usage:**
+- `get loop.detect`
+- `set loop.detect <state>`
+
+**Parameters:**
+- `state`: 
+  - `off`: no loop detection is performed
+  - `minimal`: packets are dropped if repeater's ID/hash appears 4 or more times (1-byte), 2 or more (2-byte), 1 or more (3-byte)
+  - `moderate`: packets are dropped if repeater's ID/hash appears 2 or more times (1-byte), 1 or more (2-byte), 1 or more (3-byte)
+  - `strict`: packets are dropped if repeater's ID/hash appears 1 or more times (1-byte), 1 or more (2-byte), 1 or more (3-byte)
+  
+**Default:** `off`
+
+**Note:** When it is enabled, repeaters will now reject flood packets which look like they are in a loop. This has been happening recently in some meshes when there is just a single 'bad' repeater firmware out there (prob some forked or custom firmware). If the payload is messed with, then forwarded, the same packet ends up causing a packet storm, repeated up to the max 64 hops. This feature was added in firmware 1.14
+
+**Example:** If preference is `loop.detect minimal`, and a 1-byte path size packet is received, the repeater will see if its own ID/hash is already in the path. If it's already encoded 4 times, it will reject the packet.  If the packet uses 2-byte path size, and repeater's own ID/hash is already encoded 2 times, it rejects. If the packet uses 3-byte path size, and the repeater's own ID/hash is already encoded 1 time, it rejects. 
 
 ---
 
@@ -423,11 +579,13 @@
 **Parameters:**
 - `value`: Direct transmit delay factor (0-2)
 
-**Default:** `0.2`
+**Default:** `0.3`
+
+**Note:** Direct retry waits include the same airtime-based randomized delay calculation as direct retransmits, so this factor also controls retry echo windows.
 
 ---
 
-#### View or change whether direct retries can fall back to the recently-heard repeater list
+#### View or change whether direct retries use the recent repeater SNR gate
 **Usage:**
 - `get direct.retry.heard`
 - `set direct.retry.heard <state>`
@@ -437,7 +595,25 @@
 
 **Default:** `on`
 
-**Note:** When enabled, a repeater can use recently-heard non-duplicate repeater prefixes as a fallback for direct retry eligibility when no suitable neighbor entry is available.
+**Note:** When enabled, the recent repeater table is the only direct retry eligibility gate. Prefixes missing from the table are assumed reachable; prefixes in the table below the active SNR gate are blocked. Neighbor data is not used.
+
+---
+
+#### View or change adaptive coding rate for direct retry packets
+**Usage:**
+- `get direct.retry.cr`
+- `set direct.retry.cr <cr4_min>,<cr5_min>,<cr7_min>,<cr8_max>`
+- `set direct.retry.cr off`
+
+**Parameters:**
+- `cr4_min`: SNR in dB where retry packets use `CR4`
+- `cr5_min`: SNR in dB where retry packets use `CR5`
+- `cr7_min`: SNR in dB where retry packets use `CR7`
+- `cr8_max`: SNR in dB where retry packets use `CR8`
+
+**Default:** `10.0,7.5,2.5,2.5`
+
+**Note:** DM retry packets use the next-hop SNR from a recent repeater table entry to pick a local transmit coding rate; if no recent entry is available, retry packets use `CR5`. With the default, SNR `10.0 dB` and up uses `CR4`, SNR `7.5 dB` and up uses `CR5`, SNR `2.5 dB` and down uses `CR8`, and the middle band uses `CR7`. `CR6` is never selected. Use `set direct.retry.cr off` to disable adaptive coding-rate overrides. If adaptive selection chooses `CR4`, retries after the third attempt use `CR5`.
 
 ---
 
@@ -447,11 +623,30 @@
 - `set direct.retry.margin <value>`
 
 **Parameters:**
-- `value`: Margin in dB above the SF-specific receive floor (minimum `0`, maximum `40`, quarter-dB precision, default `2.5`)
+- `value`: Rooftop preset margin in dB above the SF-specific receive floor (minimum `0`, maximum `40`, quarter-dB precision, default `5.0`)
 
-**Default:** `2.5`
+**Default:** `5.0`
 
-**Note:** The retry gate uses the active SF floor of `SF5=-2.5`, `SF6=-5`, `SF7=-7.5`, `SF8=-10`, `SF9=-12.5`, `SF10=-15`, `SF11=-17.5`, `SF12=-20`, then adds this margin.
+**Note:** `get direct.retry.margin` returns the active preset's effective margin. The retry gate uses the active SF floor of `SF5=-2.5`, `SF6=-5`, `SF7=-7.5`, `SF8=-10`, `SF9=-12.5`, `SF10=-15`, `SF11=-17.5`, `SF12=-20`, then adds this margin.
+
+---
+
+#### View or change the retry preset
+**Usage:**
+- `get retry.preset`
+- `set retry.preset <value>`
+
+**Parameters:**
+- `value`: `infra`|`rooftop`|`mobile` or `0`|`1`|`2`
+
+**Default:** `rooftop` (`1`)
+
+**Presets:**
+- `infra` (`0`): `275 ms` direct base wait, `4` direct retries, `150 ms` added per direct retry, SNR gate is SF floor + `15 dB`; flood retry defaults to `1` retry and path gate `1`
+- `rooftop` (`1`): `175 ms` direct base wait, `15` direct retries, `100 ms` added per direct retry, SNR gate is SF floor + `5 dB`; flood retry defaults to `3` retries and path gate `2`
+- `mobile` (`2`): `175 ms` direct base wait, `15` direct retries, `50 ms` added per direct retry, SNR gate is the SF floor; flood retry defaults to `3` retries and path gate `1`
+
+**Note:** Selecting a preset copies those values into the direct retry settings and resets flood retry defaults. You can refine `direct.retry.margin`, `direct.retry.count`, `direct.retry.base`, `direct.retry.step`, `flood.retry.count`, or `flood.retry.path` afterward. Retry delay is `direct.txdelay` jitter + base wait + packet-length airtime wait + per-attempt step.
 
 ---
 
@@ -461,9 +656,11 @@
 - `set direct.retry.count <value>`
 
 **Parameters:**
-- `value`: Retry attempts after initial TX (`1`-`15`)
+- `value`: Maximum retry attempts after initial TX (`1`-`15`)
 
 **Default:** `15`
+
+**Note:** The effective value is capped by total direct path length: paths of `3` hops or less use at most `8` retries, `4` hops use at most `12`, and `5+` hops use at most `15`. A queued resend is canceled early when the next-hop echo is heard.
 
 ---
 
@@ -475,9 +672,23 @@
 **Parameters:**
 - `value`: Base wait in milliseconds (`10`-`5000`)
 
-**Default:** `200`
+**Default:** `175`
 
-**Note:** The actual first retry wait is `base + computed_echo_wait_from_live_phy`.
+**Note:** The configured base is added to packet-length airtime and `direct.txdelay` jitter. Preset defaults are already reduced to account for the added `direct.txdelay` component.
+
+---
+
+#### View or change the direct retry per-attempt add time (milliseconds)
+**Usage:**
+- `get direct.retry.step`
+- `set direct.retry.step <value>`
+
+**Parameters:**
+- `value`: Milliseconds added per retry attempt (`0`-`5000`)
+
+**Default:** `100`
+
+**Note:** This controls the linear add after the first retry wait. For example, `base=300` and `step=150` adds `0`, `150`, `300`, ... ms across retry attempts.
 
 ---
 
@@ -493,13 +704,40 @@
 
 ---
 
+#### View or change the duty cycle limit
+**Usage:**
+- `get dutycycle`
+- `set dutycycle <value>`
+
+**Parameters:**
+- `value`: Duty cycle percentage (1-100)
+
+**Default:** `50%` (equivalent to airtime factor 1.0)
+
+**Examples:**
+- `set dutycycle 100` — no duty cycle limit
+- `set dutycycle 50` — 50% duty cycle (default)
+- `set dutycycle 10` — 10% duty cycle
+- `set dutycycle 1` — 1% duty cycle (strictest EU requirement)
+
+> **Note:** Added in firmware v1.15.0
+
+---
+
 #### View or change the airtime factor (duty cycle limit)
+> **Deprecated** as of firmware v1.15.0. Use [`get/set dutycycle`](#view-or-change-the-duty-cycle-limit) instead.
+
 **Usage:**
 - `get af`
 - `set af <value>`
 
 **Parameters:**
-- `value`: Airtime factor (0-9)
+- `value`: Airtime factor (0-9). After each transmission, the repeater enforces a silent period of approximately the on-air transmission time multiplied by the value. This results in a long-term duty cycle of roughly 1 divided by (1 plus the value). For example:
+  - `af = 1` → ~50% duty
+  - `af = 2` → ~33% duty
+  - `af = 3` → ~25% duty
+  - `af = 9` → ~10% duty
+  You are responsible for choosing a value that is appropriate for your jurisdiction and channel plan (for example EU 868 Mhz 10% duty cycle regulation).
 
 **Default:** `1.0`
 
@@ -523,7 +761,7 @@
 - `set agc.reset.interval <value>`
 
 **Parameters:**
-- `value`: Interval in seconds rounded down to a multiple of 4 (17 becomes 16)
+- `value`: Interval in seconds rounded down to a multiple of 4 (17 becomes 16). 0 to disable.
 
 **Default:** `0.0`
 
@@ -577,6 +815,105 @@
 
 ---
 
+#### View or change the number of flood retry attempts
+**Usage:**
+- `get flood.retry.count`
+- `set flood.retry.count <value>`
+
+**Parameters:**
+- `value`: Maximum retry attempts after initial flood TX (`0`-`15`)
+
+**Default:** `3` for `rooftop` and `mobile`, `1` for `infra`
+
+**Note:** `0` disables flood retry.
+
+---
+
+#### View or change the flood retry path gate
+**Usage:**
+- `get flood.retry.path`
+- `set flood.retry.path <value>`
+
+**Parameters:**
+- `value`: Maximum flood path length eligible for retry (`0`-`63`), or `off` to disable the gate
+
+**Default:** `2` for `rooftop`, `1` for `infra` and `mobile`
+
+**Note:** Prefixes in `flood.retry.ignore` do not count toward this path length.
+
+---
+
+#### View or change whether advert packets are flood-retried
+**Usage:**
+- `get flood.retry.advert`
+- `set flood.retry.advert <state>`
+
+**Parameters:**
+- `state`: `on` or `off`
+
+**Default:** `off`
+
+**Note:** When this is `off`, node advert packets (`PAYLOAD_TYPE_ADVERT`, type `4`) are not queued for flood retry.
+
+---
+
+#### View or change flood retry target prefixes
+**Usage:**
+- `get flood.retry.prefixes`
+- `set flood.retry.prefixes <prefixes>`
+
+**Parameters:**
+- `prefixes`: Comma-separated 3-byte hex prefixes, such as `A1B2C3,D4E5F6`; use `none` or `off` to clear
+
+**Default:** `none`
+
+**Note:** Prefixes are stored as 3 bytes. Flood retry skips packets whose path already contains a matching target prefix. When prefixes are configured, only a downstream echo from one of those target prefixes cancels a queued retry; when no prefixes are configured, any downstream echo cancels it. Matching works with 3-byte, 2-byte, or 1-byte flood paths by comparing the matching leading bytes.
+
+---
+
+#### View or change flood retry bridge mode
+**Usage:**
+- `get flood.retry.bridge`
+- `set flood.retry.bridge <state>`
+
+**Parameters:**
+- `state`: `on` or `off`
+
+**Default:** `off`
+
+**Note:** Bridge mode uses bucket definitions instead of the single `flood.retry.prefixes` target list. It also has an implicit unconfigured catch-all bucket. If a flood comes from one fresh configured bucket, retry continues until every other fresh configured bucket plus the catch-all bucket has been heard or `flood.retry.count` is exhausted. If a flood comes from an unconfigured or pathless source, retry targets every fresh configured bucket. This means one configured bucket bridges between that bucket and everything else. Prefixes in `flood.retry.ignore` never count as heard bridge targets.
+
+---
+
+#### View or change flood retry bridge buckets
+**Usage:**
+- `get flood.retry.bucket.<bucket>`
+- `set flood.retry.bucket <bucket> <prefixes>`
+
+**Parameters:**
+- `bucket`: Bucket number (`1`-`6`)
+- `prefixes`: Up to 17 comma-separated 3-byte hex prefixes, such as `AABBCC,223344`; use `none` or `off` to clear
+
+**Default:** all buckets empty
+
+**Note:** Prefixes are stored as 3 bytes but match 3-byte, 2-byte, and 1-byte flood paths by comparing leading bytes. Bucket prefixes are included in bridge retry logic only if they were heard in the recent repeater table within the last hour.
+
+---
+
+#### View or change flood retry ignored prefixes
+**Usage:**
+- `get flood.retry.ignore`
+- `set flood.retry.ignore <prefixes>`
+
+**Parameters:**
+- `prefixes`: Up to 8 comma-separated 3-byte hex prefixes, such as `AABBCC,223344`; use `none` or `off` to clear
+
+**Default:** empty
+
+**Note:** In non-bridge retry, an echo whose last hop matches an ignored prefix does not cancel a queued retry as successful. In bridge mode, ignored prefixes do not count as a heard bridge bucket or as the implicit catch-all bucket when bridge retry decides whether every target has repeated the flood.
+
+---
+
 ### ACL
 
 #### Add, update or remove permissions for a companion
@@ -600,6 +937,32 @@
 - `get acl`
 
 **Serial Only:** Yes
+
+---
+
+#### View or set direct path overrides for the current remote client
+**Usage:**
+- `get outpath`
+- `set outpath <hop1_hex,hop2_hex,...>`
+- `set outpath direct`
+- `set outpath clear`
+- `set outpath flood`
+- `get altpath`
+- `set altpath <hop1_hex,hop2_hex,...>`
+- `set altpath clear`
+
+**Parameters:**
+- `hopN_hex`: Hop hash, `2`, `4`, or `6` hex characters. All hops must use the same width.
+
+**Notes:**
+- These commands require remote client context; they target the caller's ACL entry.
+- The path hash size is inferred from the hop hash width.
+- `outpath` overrides the primary direct route used for replies to the caller.
+- `direct` sets a zero-hop direct route for a caller reachable without repeaters.
+- `clear` forgets the current direct path and allows normal path discovery to repopulate it.
+- `flood` forces replies to use flood packets until the client logs in again.
+- `altpath` is an optional second direct route used for duplicate response attempts.
+- `set altpath clear` removes the duplicate route so only one reply is sent.
 
 ---
 
@@ -680,6 +1043,16 @@
 
 ---
 
+#### View or change the default scope region for this node
+**Usage:** 
+- `region default`
+- `region default {name|<null>}`
+
+**Parameters:**
+- `name`: Region name,  or <null> to reset/clear
+
+---
+
 #### Create a new region
 **Usage:** 
 - `region put <name> [parent_name]`
@@ -718,7 +1091,7 @@
 **Usage:** 
 - `region`
 
-**Serial Only:** Yes
+**Serial Only:** For firmware older than 1.12.0
 
 ---
 
@@ -822,7 +1195,9 @@ region save
 
 **Default:** `off`
 
-**Note:** Output format: `{status}, {fix}, {sat count}` (when enabled)
+**Note:** Output format:
+- `off` when the GPS hardware is disabled
+- `on, {active|deactivated}, {fix|no fix}, {sat count} sats` when the GPS hardware is enabled
 
 ---
 
@@ -844,7 +1219,7 @@ region save
 - `gps advert <policy>`
 
 **Parameters:** 
-- `policy`: `none`|`shared`|`prefs` 
+- `policy`: `none`|`share`|`prefs` 
   - `none`: don't include location in adverts
   - `share`: share gps location (from SensorManager)
   - `prefs`: location stored in node's lat and lon settings
@@ -878,6 +1253,11 @@ region save
 
 ### Bridge (When bridge support is compiled in)
 
+#### View the compiled bridge type
+**Usage:** `get bridge.type`
+
+---
+
 #### View or change the bridge enabled flag
 **Usage:**
 - `get bridge.enabled`
@@ -887,12 +1267,6 @@ region save
 - `state`: `on`|`off`
 
 **Default:** `off`
-
----
-
-#### View the bridge source
-**Usage:**
-- `get bridge.source`
 
 ---
 
@@ -915,10 +1289,10 @@ region save
 
 **Parameters:**
 - `source`: 
-  - `rx`: bridges received packets
-  - `tx`: bridges transmitted packets
+  - `logRx`: bridges received packets
+  - `logTx`: bridges transmitted packets
 
-**Default:** `tx`
+**Default:** `logTx`
 
 ---
 
@@ -950,8 +1324,39 @@ region save
 - `set bridge.secret <secret>`
 
 **Parameters:**
-- `secret`: 16-character encryption secret
+- `secret`: ESP-NOW bridge secret, up to 15 characters
 
 **Default:** Varies by board
+
+---
+
+#### View the bootloader version (nRF52 only)
+**Usage:** `get bootloader.ver`
+
+---
+
+#### View power management support
+**Usage:** `get pwrmgt.support`
+
+---
+
+#### View the current power source
+**Usage:** `get pwrmgt.source`
+
+**Note:** Returns an error on boards without power management support.
+
+---
+
+#### View the boot reset and shutdown reasons
+**Usage:** `get pwrmgt.bootreason`
+
+**Note:** Returns an error on boards without power management support.
+
+---
+
+#### View the boot voltage
+**Usage:** `get pwrmgt.bootmv`
+
+**Note:** Returns an error on boards without power management support.
 
 ---

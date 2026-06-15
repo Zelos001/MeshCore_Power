@@ -11,7 +11,7 @@ class PacketQueue {
 public:
   PacketQueue(int max_entries);
   mesh::Packet* get(uint32_t now);
-  void add(mesh::Packet* packet, uint8_t priority, uint32_t scheduled_for);
+  bool add(mesh::Packet* packet, uint8_t priority, uint32_t scheduled_for);
   int count() const { return _num; }
   int countBefore(uint32_t now) const;
   mesh::Packet* itemAt(int i) const { return _table[i]; }
@@ -26,9 +26,10 @@ public:
 
   mesh::Packet* allocNew() override;
   void free(mesh::Packet* packet) override;
-  void queueOutbound(mesh::Packet* packet, uint8_t priority, uint32_t scheduled_for) override;
+  bool queueOutbound(mesh::Packet* packet, uint8_t priority, uint32_t scheduled_for) override;
   mesh::Packet* getNextOutbound(uint32_t now) override;
   int getOutboundCount(uint32_t now) const override;
+  int getOutboundTotal() const override;
   int getFreeCount() const override;
   mesh::Packet* getOutboundByIdx(int i) override;
   mesh::Packet* removeOutboundByIdx(int i) override;

@@ -66,7 +66,7 @@ struct NodePrefs {  // persisted to file
   char node_name[32];
   double node_lat, node_lon;
   float freq;
-  uint8_t tx_power_dbm;
+  int8_t tx_power_dbm;
   uint8_t unused[3];
 };
 
@@ -213,7 +213,7 @@ protected:
   }
 
   void onContactPathUpdated(const ContactInfo& contact) override {
-    Serial.printf("PATH to: %s, path_len=%d\n", contact.name, (int32_t) contact.out_path_len);
+    Serial.printf("PATH to: %s, path_len=%d\n", contact.name, (uint32_t) contact.out_path_len);
     saveContacts();
   }
 
@@ -266,8 +266,9 @@ protected:
     return SEND_TIMEOUT_BASE_MILLIS + (FLOOD_SEND_TIMEOUT_FACTOR * pkt_airtime_millis);
   }
   uint32_t calcDirectTimeoutMillisFor(uint32_t pkt_airtime_millis, uint8_t path_len) const override {
+    uint8_t path_hash_count = path_len & 63;
     return SEND_TIMEOUT_BASE_MILLIS + 
-         ( (pkt_airtime_millis*DIRECT_SEND_PERHOP_FACTOR + DIRECT_SEND_PERHOP_EXTRA_MILLIS) * (path_len + 1));
+         ( (pkt_airtime_millis*DIRECT_SEND_PERHOP_FACTOR + DIRECT_SEND_PERHOP_EXTRA_MILLIS) * (path_hash_count + 1));
   }
 
   void onSendTimeout() override {
@@ -280,7 +281,7 @@ public:
   {
     // defaults
     memset(&_prefs, 0, sizeof(_prefs));
-    _prefs.airtime_factor = 2.0;    // one third
+    _prefs.airtime_factor = 1.0;
     strcpy(_prefs.node_name, "NONAME");
     _prefs.freq = LORA_FREQ;
     _prefs.tx_power_dbm = LORA_TX_POWER;
@@ -290,7 +291,7 @@ public:
   }
 
   float getFreqPref() const { return _prefs.freq; }
-  uint8_t getTxPowerPref() const { return _prefs.tx_power_dbm; }
+  int8_t getTxPowerPref() const { return _prefs.tx_power_dbm; }
 
   void begin(FILESYSTEM& fs) {
     _fs = &fs;
@@ -561,7 +562,7 @@ void setup() {
 
   if (!radio_init()) { halt(); }
 
-  fast_rng.begin(radio_get_rng_seed());
+  fast_rng.begin(radio_driver.getRngSeed());
 
 #if defined(NRF52_PLATFORM)
   InternalFS.begin();
@@ -576,8 +577,8 @@ void setup() {
   #error "need to define filesystem"
 #endif
 
-  radio_set_params(the_mesh.getFreqPref(), LORA_BW, LORA_SF, LORA_CR);
-  radio_set_tx_power(the_mesh.getTxPowerPref());
+  radio_driver.setParams(the_mesh.getFreqPref(), LORA_BW, LORA_SF, LORA_CR);
+  radio_driver.setTxPower(the_mesh.getTxPowerPref());
 
   the_mesh.showWelcome();
 

@@ -4,6 +4,7 @@
 #include <helpers/IdentityStore.h>
 #include <helpers/SensorManager.h>
 #include <helpers/ClientACL.h>
+#include <helpers/RegionMap.h>
 
 #if defined(WITH_RS232_BRIDGE) || defined(WITH_ESPNOW_BRIDGE)
 #define WITH_BRIDGE
@@ -13,13 +14,69 @@
 #define ADVERT_LOC_SHARE      1
 #define ADVERT_LOC_PREFS      2
 
+#define LOOP_DETECT_OFF       0
+#define LOOP_DETECT_MINIMAL   1
+#define LOOP_DETECT_MODERATE  2
+#define LOOP_DETECT_STRICT    3
+
+#define RETRY_PRESET_INFRA    0
+#define RETRY_PRESET_ROOFTOP  1
+#define RETRY_PRESET_MOBILE   2
+
+#define DIRECT_RETRY_INFRA_BASE_MS      275
+#define DIRECT_RETRY_INFRA_COUNT          4
+#define DIRECT_RETRY_INFRA_STEP_MS      150
+#define DIRECT_RETRY_INFRA_MARGIN_X4     60
+
+#define DIRECT_RETRY_ROOFTOP_BASE_MS    175
+#define DIRECT_RETRY_ROOFTOP_COUNT       15
+#define DIRECT_RETRY_ROOFTOP_STEP_MS    100
+#define DIRECT_RETRY_ROOFTOP_MARGIN_X4   20
+
+#define DIRECT_RETRY_MOBILE_BASE_MS     175
+#define DIRECT_RETRY_MOBILE_COUNT        15
+#define DIRECT_RETRY_MOBILE_STEP_MS      50
+#define DIRECT_RETRY_MOBILE_MARGIN_X4     0
+
+#ifndef FLOOD_RETRY_PREFIX_SLOTS
+  #define FLOOD_RETRY_PREFIX_SLOTS        8
+#endif
+#ifndef FLOOD_RETRY_PREFIX_LEN
+  #define FLOOD_RETRY_PREFIX_LEN          3
+#endif
+#ifndef FLOOD_RETRY_BRIDGE_BUCKETS
+  #define FLOOD_RETRY_BRIDGE_BUCKETS      6
+#endif
+#ifndef FLOOD_RETRY_BUCKET_PREFIXES
+  #define FLOOD_RETRY_BUCKET_PREFIXES     17
+#endif
+#ifndef FLOOD_RETRY_IGNORE_PREFIXES
+  #define FLOOD_RETRY_IGNORE_PREFIXES     8
+#endif
+#ifndef FLOOD_RETRY_LIST_PREFIXES
+  #define FLOOD_RETRY_LIST_PREFIXES       ((FLOOD_RETRY_IGNORE_PREFIXES > FLOOD_RETRY_BUCKET_PREFIXES) ? FLOOD_RETRY_IGNORE_PREFIXES : FLOOD_RETRY_BUCKET_PREFIXES)
+#endif
+#ifndef FLOOD_RETRY_LIST_TEXT_MAX
+  #define FLOOD_RETRY_LIST_TEXT_MAX       (FLOOD_RETRY_LIST_PREFIXES * FLOOD_RETRY_PREFIX_LEN * 2 + FLOOD_RETRY_LIST_PREFIXES)
+#endif
+#ifndef COMMON_CLI_TMP_LEN
+  #define COMMON_CLI_TMP_LEN              ((FLOOD_RETRY_LIST_TEXT_MAX > (PRV_KEY_SIZE * 2 + 4)) ? FLOOD_RETRY_LIST_TEXT_MAX : (PRV_KEY_SIZE * 2 + 4))
+#endif
+
+#define DIRECT_RETRY_CR4_MIN_SNR_X4_DEFAULT  40  // 10.0 dB and up => CR4
+#define DIRECT_RETRY_CR5_MIN_SNR_X4_DEFAULT  30  //  7.5 dB and up => CR5
+#define DIRECT_RETRY_CR7_MIN_SNR_X4_DEFAULT  10  //  2.5 dB and up => CR7
+#define DIRECT_RETRY_CR8_MAX_SNR_X4_DEFAULT  10  //  2.5 dB and down => CR8
+#define DIRECT_RETRY_CR_SNR_X4_MIN         -128
+#define DIRECT_RETRY_CR_SNR_X4_MAX          127
+
 struct NodePrefs { // persisted to file
   float airtime_factor;
   char node_name[32];
   double node_lat, node_lon;
   char password[16];
   float freq;
-  uint8_t tx_power_dbm;
+  int8_t tx_power_dbm;
   uint8_t disable_fwd;
   uint8_t advert_interval;       // minutes / 2
   uint8_t flood_advert_interval; // hours
@@ -54,9 +111,30 @@ struct NodePrefs { // persisted to file
   uint32_t discovery_mod_timestamp;
   float adc_multiplier;
   char owner_info[120];
+  uint8_t rx_boosted_gain; // power settings
+  uint8_t radio_fem_rxgain; // LoRa FEM RX gain setting
+  uint8_t path_hash_mode;   // which path mode to use when sending
+  uint8_t loop_detect;
   uint8_t direct_retry_attempts;
   uint16_t direct_retry_base_ms;
   uint8_t direct_retry_timing_magic[2];
+  uint8_t retry_preset;
+  uint16_t direct_retry_step_ms;
+  uint8_t flood_retry_attempts;
+  uint8_t flood_retry_path_gate;
+  uint8_t flood_retry_prefs_magic[2];
+  uint8_t flood_retry_prefixes[FLOOD_RETRY_PREFIX_SLOTS][FLOOD_RETRY_PREFIX_LEN];
+  uint8_t flood_retry_bridge_enabled;
+  uint8_t flood_retry_bridge_buckets[FLOOD_RETRY_BRIDGE_BUCKETS][FLOOD_RETRY_BUCKET_PREFIXES][FLOOD_RETRY_PREFIX_LEN];
+  uint8_t flood_retry_ignore_prefixes[FLOOD_RETRY_IGNORE_PREFIXES][FLOOD_RETRY_PREFIX_LEN];
+  uint8_t flood_retry_advert_enabled;
+  int8_t direct_retry_cr4_snr_x4;
+  int8_t direct_retry_cr5_snr_x4;
+  int8_t direct_retry_cr7_snr_x4;
+  int8_t direct_retry_cr8_snr_x4;
+  uint8_t battery_alert_enabled;
+  uint8_t battery_alert_low_percent;
+  uint8_t battery_alert_critical_percent;
 };
 
 class CommonCLICallbacks {
@@ -72,7 +150,7 @@ public:
   virtual void setLoggingOn(bool enable) = 0;
   virtual void eraseLogFile() = 0;
   virtual void dumpLogFile() = 0;
-  virtual void setTxPower(uint8_t power_dbm) = 0;
+  virtual void setTxPower(int8_t power_dbm) = 0;
   virtual void formatNeighborsReply(char *reply) = 0;
   virtual void removeNeighbor(const uint8_t* pubkey, int key_len) {
     // no op by default
@@ -85,11 +163,25 @@ public:
   virtual void clearStats() = 0;
   virtual void applyTempRadioParams(float freq, float bw, uint8_t sf, uint8_t cr, int timeout_mins) = 0;
 
+  virtual void startRegionsLoad() {
+    // no op by default
+  }
+  virtual bool saveRegions() {
+    return false;
+  }
+  virtual void onDefaultRegionChanged(const RegionEntry* r) {
+    // no op by default
+  }
+
   virtual void setBridgeState(bool enable) {
     // no op by default
   };
 
   virtual void restartBridge() {
+    // no op by default
+  };
+
+  virtual void setRxBoostedGain(bool enable) {
     // no op by default
   };
 };
@@ -100,19 +192,24 @@ class CommonCLI {
   CommonCLICallbacks* _callbacks;
   mesh::MainBoard* _board;
   SensorManager* _sensors;
+  RegionMap* _region_map;
   ClientACL* _acl;
-  char tmp[PRV_KEY_SIZE*2 + 4];
+  char tmp[COMMON_CLI_TMP_LEN];
 
   mesh::RTCClock* getRTCClock() { return _rtc; }
   void savePrefs();
   void loadPrefsInt(FILESYSTEM* _fs, const char* filename);
 
+  void handleRegionCmd(char* command, char* reply);
+  void handleGetCmd(uint32_t sender_timestamp, char* command, char* reply);
+  void handleSetCmd(uint32_t sender_timestamp, char* command, char* reply);
+
 public:
-  CommonCLI(mesh::MainBoard& board, mesh::RTCClock& rtc, SensorManager& sensors, ClientACL& acl, NodePrefs* prefs, CommonCLICallbacks* callbacks)
-      : _board(&board), _rtc(&rtc), _sensors(&sensors), _acl(&acl), _prefs(prefs), _callbacks(callbacks) { }
+  CommonCLI(mesh::MainBoard& board, mesh::RTCClock& rtc, SensorManager& sensors, RegionMap& region_map, ClientACL& acl, NodePrefs* prefs, CommonCLICallbacks* callbacks)
+      : _board(&board), _rtc(&rtc), _sensors(&sensors), _region_map(&region_map), _acl(&acl), _prefs(prefs), _callbacks(callbacks) { }
 
   void loadPrefs(FILESYSTEM* _fs);
   void savePrefs(FILESYSTEM* _fs);
-  void handleCommand(uint32_t sender_timestamp, const char* command, char* reply);
+  void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   uint8_t buildAdvertData(uint8_t node_type, uint8_t* app_data);
 };
