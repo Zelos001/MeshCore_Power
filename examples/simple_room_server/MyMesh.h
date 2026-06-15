@@ -144,6 +144,9 @@ protected:
   int getInterferenceThreshold() const override {
     return _prefs.interference_threshold;
   }
+  bool getCADEnabled() const override {
+    return _prefs.cad_enabled;
+  }
   int getAGCResetInterval() const override {
     return ((int)_prefs.agc_reset_interval) * 4000;   // milliseconds
   }
@@ -222,4 +225,7 @@ public:
   void clearStats() override;
   void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   void loop();
+
+  // To check if there is pending work
+  bool hasPendingWork() const;
 };
