@@ -5,8 +5,6 @@ namespace mesh {
 
 static const uint8_t DIRECT_RETRY_MAX_ATTEMPTS_DEFAULT = 15;
 static const uint8_t DIRECT_RETRY_MAX_ATTEMPTS_HARD_MAX = 15;
-static const uint8_t FLOOD_RETRY_MAX_ATTEMPTS_DEFAULT = 3;
-static const uint8_t FLOOD_RETRY_MAX_ATTEMPTS_HARD_MAX = 15;
 
 static uint8_t decodeTraceHashSize(uint8_t flags, uint8_t route_bytes) {
   uint8_t code = flags & 0x03;
@@ -44,19 +42,6 @@ void Mesh::begin() {
     _direct_retries[i].queued = false;
     _direct_retries[i].active = false;
   }
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
-    _flood_retries[i].packet = NULL;
-    _flood_retries[i].trigger_packet = NULL;
-    _flood_retries[i].retry_started_at = 0;
-    _flood_retries[i].retry_at = 0;
-    _flood_retries[i].retry_delay = 0;
-    _flood_retries[i].retry_attempts_sent = 0;
-    _flood_retries[i].priority = 0;
-    _flood_retries[i].progress_marker = 0;
-    _flood_retries[i].waiting_final_echo = false;
-    _flood_retries[i].queued = false;
-    _flood_retries[i].active = false;
-  }
   Dispatcher::begin();
 }
 
@@ -93,37 +78,6 @@ void Mesh::loop() {
       clearDirectRetrySlot(i);
     }
   }
-
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
-    if (!_flood_retries[i].active) {
-      continue;
-    }
-
-    if (_flood_retries[i].waiting_final_echo) {
-      if (!millisHasNowPassed(_flood_retries[i].retry_at)) {
-        continue;
-      }
-
-      uint32_t elapsed_millis = _flood_retries[i].retry_started_at == 0
-        ? 0
-        : (uint32_t)(_ms->getMillis() - _flood_retries[i].retry_started_at);
-      onFloodRetryEvent("failed_all_tries", _flood_retries[i].packet, elapsed_millis, _flood_retries[i].retry_attempts_sent);
-      onFloodRetryEvent("failure", _flood_retries[i].packet, elapsed_millis, _flood_retries[i].retry_attempts_sent);
-      clearFloodRetrySlot(i);
-      continue;
-    }
-
-    if (!_flood_retries[i].queued || !millisHasNowPassed(_flood_retries[i].retry_at)) {
-      continue;
-    }
-
-    if (!isFloodRetryQueued(_flood_retries[i].packet)) {
-      if (_flood_retries[i].packet == getOutboundInFlight()) {
-        continue;
-      }
-      clearFloodRetrySlot(i);
-    }
-  }
 }
 
 bool Mesh::allowPacketForward(const mesh::Packet* packet) { 
@@ -152,39 +106,16 @@ uint32_t Mesh::getDirectRetryAttemptDelay(const Packet* packet, uint8_t attempt_
   // Keep the historical linear spacing while allowing the base wait to vary by platform/profile.
   return base + ((uint32_t)attempt_idx * 100UL);
 }
-bool Mesh::allowFloodRetry(const Packet* packet) const {
-  return true;
-}
-bool Mesh::hasFloodRetryTargetPrefix(const Packet* packet) const {
-  return false;
-}
-uint8_t Mesh::getFloodRetryMaxPathLength(const Packet* packet) const {
-  return 2;
-}
-uint8_t Mesh::getFloodRetryMaxAttempts(const Packet* packet) const {
-  return FLOOD_RETRY_MAX_ATTEMPTS_DEFAULT;
-}
-uint32_t Mesh::getFloodRetryAttemptDelay(const Packet* packet, uint8_t attempt_idx) {
-  if (packet == NULL) {
-    return _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
-  }
-
-  uint32_t max_packet_airtime = _radio->getEstAirtimeFor(MAX_TRANS_UNIT);
-  uint32_t packet_airtime = _radio->getEstAirtimeFor(packet->getRawLength());
-  return max_packet_airtime + (20UL * packet_airtime);
-}
 uint8_t Mesh::getExtraAckTransmitCount() const {
   return 0;
 }
 
 void Mesh::onSendComplete(Packet* packet) {
   armDirectRetryOnSendComplete(packet);
-  armFloodRetryOnSendComplete(packet);
 }
 
 void Mesh::onSendFail(Packet* packet) {
   clearPendingDirectRetryOnSendFail(packet);
-  clearPendingFloodRetryOnSendFail(packet);
 }
 
 uint32_t Mesh::getCADFailRetryDelay() const {
@@ -202,8 +133,6 @@ int Mesh::searchChannelsByHash(const uint8_t* hash, GroupChannel channels[], int
 DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
   if (pkt->isRouteDirect()) {
     cancelDirectRetryOnEcho(pkt);
-  } else if (pkt->isRouteFlood()) {
-    cancelFloodRetryOnEcho(pkt);
   }
 
   if (pkt->isRouteDirect() && pkt->getPayloadType() == PAYLOAD_TYPE_TRACE) {
@@ -523,7 +452,6 @@ DispatcherAction Mesh::routeRecvPacket(Packet* packet) {
 
     uint32_t d = getRetransmitDelay(packet);
     uint8_t priority = packet->getPathHashCount();
-    maybeScheduleFloodRetry(packet, priority);
     // as this propagates outwards, give it lower and lower priority
     return ACTION_RETRANSMIT_DELAYED(priority, d);   // give priority to closer sources, than ones further away
   }
@@ -950,242 +878,6 @@ void Mesh::maybeScheduleDirectRetry(const Packet* packet, uint8_t priority) {
   _direct_retries[slot_idx].waiting_final_echo = false;
   _direct_retries[slot_idx].queued = false;
   _direct_retries[slot_idx].active = true;
-}
-
-void Mesh::clearFloodRetrySlot(int idx) {
-  if (_flood_retries[idx].waiting_final_echo && _flood_retries[idx].packet != NULL) {
-    releasePacket(_flood_retries[idx].packet);
-  }
-  _flood_retries[idx].packet = NULL;
-  _flood_retries[idx].trigger_packet = NULL;
-  _flood_retries[idx].retry_started_at = 0;
-  _flood_retries[idx].retry_at = 0;
-  _flood_retries[idx].retry_delay = 0;
-  _flood_retries[idx].retry_attempts_sent = 0;
-  _flood_retries[idx].priority = 0;
-  _flood_retries[idx].progress_marker = 0;
-  _flood_retries[idx].waiting_final_echo = false;
-  _flood_retries[idx].queued = false;
-  _flood_retries[idx].active = false;
-}
-
-bool Mesh::isFloodRetryQueued(const Packet* packet) const {
-  for (int i = 0; i < _mgr->getOutboundTotal(); i++) {
-    if (_mgr->getOutboundByIdx(i) == packet) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool Mesh::isFloodRetryEchoTarget(const Packet* packet, uint8_t progress_marker) const {
-  return packet->isRouteFlood() && packet->getPathHashCount() > progress_marker;
-}
-
-bool Mesh::cancelFloodRetryOnEcho(const Packet* packet) {
-  uint8_t recv_key[MAX_HASH_SIZE];
-  packet->calculatePacketHash(recv_key);
-
-  bool cleared = false;
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
-    if (!_flood_retries[i].active || memcmp(recv_key, _flood_retries[i].retry_key, MAX_HASH_SIZE) != 0) {
-      continue;
-    }
-    if (!isFloodRetryEchoTarget(packet, _flood_retries[i].progress_marker)) {
-      continue;
-    }
-
-    uint32_t echo_millis = _flood_retries[i].retry_started_at == 0
-      ? 0
-      : (uint32_t)(_ms->getMillis() - _flood_retries[i].retry_started_at);
-    uint8_t retry_attempt = _flood_retries[i].waiting_final_echo
-      ? _flood_retries[i].retry_attempts_sent
-      : _flood_retries[i].retry_attempts_sent + 1;
-    onFloodRetryEvent("good", packet, echo_millis, retry_attempt);
-
-    if (_flood_retries[i].queued) {
-      for (int j = 0; j < _mgr->getOutboundTotal(); j++) {
-        if (_mgr->getOutboundByIdx(j) == _flood_retries[i].packet) {
-          Packet* pending = _mgr->removeOutboundByIdx(j);
-          if (pending) {
-            releasePacket(pending);
-          }
-          break;
-        }
-      }
-    }
-    clearFloodRetrySlot(i);
-    cleared = true;
-  }
-
-  return cleared;
-}
-
-void Mesh::armFloodRetryOnSendComplete(const Packet* packet) {
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
-    if (!_flood_retries[i].active) {
-      continue;
-    }
-
-    if (_flood_retries[i].queued) {
-      if (_flood_retries[i].packet != packet) {
-        continue;
-      }
-
-      uint32_t elapsed_millis = _flood_retries[i].retry_started_at == 0
-        ? 0
-        : (uint32_t)(_ms->getMillis() - _flood_retries[i].retry_started_at);
-      onFloodRetryEvent("resent", packet, elapsed_millis, _flood_retries[i].retry_attempts_sent + 1);
-      _flood_retries[i].retry_attempts_sent++;
-
-      uint8_t max_attempts = getFloodRetryMaxAttempts(packet);
-      if (max_attempts < 1) {
-        max_attempts = 1;
-      } else if (max_attempts > FLOOD_RETRY_MAX_ATTEMPTS_HARD_MAX) {
-        max_attempts = FLOOD_RETRY_MAX_ATTEMPTS_HARD_MAX;
-      }
-      if (_flood_retries[i].retry_attempts_sent >= max_attempts) {
-        Packet* final_wait = obtainNewPacket();
-        if (final_wait == NULL) {
-          onFloodRetryEvent("dropped_no_packet", packet, elapsed_millis, _flood_retries[i].retry_attempts_sent);
-          onFloodRetryEvent("failure", packet, elapsed_millis, _flood_retries[i].retry_attempts_sent);
-          clearFloodRetrySlot(i);
-          continue;
-        }
-
-        *final_wait = *packet;
-        _flood_retries[i].packet = final_wait;
-        _flood_retries[i].retry_at = futureMillis(_flood_retries[i].retry_delay);
-        _flood_retries[i].waiting_final_echo = true;
-        _flood_retries[i].queued = false;
-        continue;
-      }
-
-      Packet* retry = obtainNewPacket();
-      if (retry == NULL) {
-        onFloodRetryEvent("dropped_no_packet", packet, elapsed_millis, _flood_retries[i].retry_attempts_sent + 1);
-        onFloodRetryEvent("failure", packet, elapsed_millis, _flood_retries[i].retry_attempts_sent + 1);
-        clearFloodRetrySlot(i);
-        continue;
-      }
-
-      *retry = *packet;
-      uint32_t retry_delay = getFloodRetryAttemptDelay(packet, _flood_retries[i].retry_attempts_sent);
-      if (queueOutboundPacket(retry, _flood_retries[i].priority, retry_delay)) {
-        _flood_retries[i].packet = retry;
-        _flood_retries[i].retry_delay = retry_delay;
-        _flood_retries[i].retry_at = futureMillis(retry_delay);
-        _flood_retries[i].retry_started_at = _ms->getMillis();
-        _flood_retries[i].waiting_final_echo = false;
-        onFloodRetryEvent("queued", retry, retry_delay, _flood_retries[i].retry_attempts_sent + 1);
-      } else {
-        onFloodRetryEvent("dropped_queue_full", retry, retry_delay, _flood_retries[i].retry_attempts_sent + 1);
-        onFloodRetryEvent("failure", retry, elapsed_millis, _flood_retries[i].retry_attempts_sent + 1);
-        releasePacket(retry);
-        clearFloodRetrySlot(i);
-      }
-      continue;
-    }
-
-    if (_flood_retries[i].trigger_packet != packet) {
-      continue;
-    }
-
-    Packet* retry = obtainNewPacket();
-    if (retry == NULL) {
-      onFloodRetryEvent("dropped_no_packet", packet, _flood_retries[i].retry_delay, 1);
-      onFloodRetryEvent("failure", packet, 0, 1);
-      clearFloodRetrySlot(i);
-      continue;
-    }
-
-    *retry = *packet;
-    if (queueOutboundPacket(retry, _flood_retries[i].priority, _flood_retries[i].retry_delay)) {
-      unsigned long now = _ms->getMillis();
-      _flood_retries[i].packet = retry;
-      _flood_retries[i].trigger_packet = NULL;
-      _flood_retries[i].queued = true;
-      _flood_retries[i].waiting_final_echo = false;
-      _flood_retries[i].retry_at = futureMillis(_flood_retries[i].retry_delay);
-      _flood_retries[i].retry_started_at = now;
-      onFloodRetryEvent("queued", retry, _flood_retries[i].retry_delay, 1);
-    } else {
-      onFloodRetryEvent("dropped_queue_full", retry, _flood_retries[i].retry_delay, 1);
-      onFloodRetryEvent("failure", retry, 0, 1);
-      releasePacket(retry);
-      clearFloodRetrySlot(i);
-    }
-  }
-}
-
-void Mesh::clearPendingFloodRetryOnSendFail(const Packet* packet) {
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
-    if (!_flood_retries[i].active) {
-      continue;
-    }
-
-    if (_flood_retries[i].queued) {
-      if (_flood_retries[i].packet == packet) {
-        onFloodRetryEvent("dropped_send_fail", packet, 0, _flood_retries[i].retry_attempts_sent + 1);
-        onFloodRetryEvent("failure", packet, 0, _flood_retries[i].retry_attempts_sent + 1);
-        clearFloodRetrySlot(i);
-      }
-      continue;
-    }
-
-    if (_flood_retries[i].trigger_packet == packet) {
-      onFloodRetryEvent("dropped_send_fail", packet, 0, 1);
-      onFloodRetryEvent("failure", packet, 0, 1);
-      clearFloodRetrySlot(i);
-    }
-  }
-}
-
-void Mesh::maybeScheduleFloodRetry(const Packet* packet, uint8_t priority) {
-  if (packet == NULL || !packet->isRouteFlood() || hasFloodRetryTargetPrefix(packet)) {
-    return;
-  }
-
-  uint8_t max_path_len = getFloodRetryMaxPathLength(packet);
-  if (max_path_len != FLOOD_RETRY_PATH_GATE_DISABLED && packet->getPathHashCount() > max_path_len) {
-    return;
-  }
-
-  uint8_t max_attempts = getFloodRetryMaxAttempts(packet);
-  if (max_attempts == 0) {
-    return;
-  }
-
-  int slot_idx = -1;
-  for (int i = 0; i < MAX_FLOOD_RETRY_SLOTS; i++) {
-    if (!_flood_retries[i].active) {
-      slot_idx = i;
-      break;
-    }
-  }
-  if (slot_idx < 0) {
-    onFloodRetryEvent("dropped_no_slot", packet, 0, 0);
-    onFloodRetryEvent("failure", packet, 0, 0);
-    return;
-  }
-
-  if (!allowFloodRetry(packet)) {
-    return;
-  }
-
-  uint32_t retry_delay = getFloodRetryAttemptDelay(packet, 0);
-  packet->calculatePacketHash(_flood_retries[slot_idx].retry_key);
-  _flood_retries[slot_idx].packet = NULL;
-  _flood_retries[slot_idx].trigger_packet = const_cast<Packet*>(packet);
-  _flood_retries[slot_idx].retry_started_at = 0;
-  _flood_retries[slot_idx].retry_at = 0;
-  _flood_retries[slot_idx].retry_delay = retry_delay;
-  _flood_retries[slot_idx].retry_attempts_sent = 0;
-  _flood_retries[slot_idx].priority = priority;
-  _flood_retries[slot_idx].progress_marker = packet->getPathHashCount();
-  _flood_retries[slot_idx].waiting_final_echo = false;
-  _flood_retries[slot_idx].queued = false;
-  _flood_retries[slot_idx].active = true;
 }
 
 Packet* Mesh::createAdvert(const LocalIdentity& id, const uint8_t* app_data, size_t app_data_len) {
