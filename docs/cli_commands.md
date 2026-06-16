@@ -1115,8 +1115,8 @@ set direct.retry.margin 10
 - Lower SNR uses more robust coding rates.
 - CR6 is intentionally skipped.
 - `off` disables per-packet retry CR overrides and uses the current radio CR.
-- Unknown repeaters start at `+2.00 dB` for adaptive CR selection.
-- A failed unknown repeater is seeded at `+1.75 dB`.
+- Unknown repeaters start at `+3.00 dB` for adaptive CR selection.
+- A failed unknown repeater is seeded at `+2.75 dB`.
 - Each later failure lowers the SNR estimate by `0.25 dB`.
 
 **Examples:**
@@ -1163,6 +1163,15 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 - `prefix`: Repeater path-hash prefix as hex.
 - `snr_db`: SNR in dB.
 - `page`: 1-based result page.
+
+**SNR details:**
+- Recent repeater SNR is stored internally in quarter-dB units.
+- Heard repeater samples update an existing table entry with a weighted blend: `75%` existing SNR and `25%` new heard SNR, rounded up.
+- Direct retry success also feeds the heard echo SNR back into the same weighted table.
+- Direct retry failure is not weighted: each final echo-timeout failure lowers that repeater's SNR by `0.25 dB`.
+- Unknown repeaters start at `+3.00 dB` for adaptive CR selection.
+- If an unknown repeater fails, it is seeded into the table at `+2.75 dB`.
+- `set recent.repeater <prefix> <snr_db>` seeds a missing prefix or adds another weighted sample for an existing prefix.
 
 **Examples:**
 ```

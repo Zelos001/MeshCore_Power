@@ -606,7 +606,7 @@ bool MyMesh::allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_ho
 
   if (repeater == NULL) {
     // Retry unknown repeaters too. If they fail, onDirectRetryFailed() seeds the
-    // recent-repeater table below the +2.00 dB starting point.
+    // recent-repeater table below the +3.00 dB starting point.
     return true;
   }
   int16_t retry_floor_x4 = (int16_t)getDirectRetryMinSNRX4() + (int16_t)_prefs.direct_retry_snr_margin_x4;
@@ -615,7 +615,7 @@ bool MyMesh::allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_ho
 
 void MyMesh::configureDirectRetryPacket(mesh::Packet* retry, const mesh::Packet* original, uint8_t retry_attempt) {
   (void)retry_attempt;
-  int8_t snr_x4 = 8;  // unknown repeaters start at +2.00 dB
+  int8_t snr_x4 = 12;  // unknown repeaters start at +3.00 dB
   const SimpleMeshTables* tables = static_cast<const SimpleMeshTables*>(getTables());
   if (tables != NULL) {
     uint8_t prefix[MAX_HASH_SIZE];
@@ -683,7 +683,7 @@ void MyMesh::onDirectRetryFailed(const uint8_t* next_hop_hash, uint8_t next_hop_
   SimpleMeshTables* tables = static_cast<SimpleMeshTables*>(getTables());
   if (tables != NULL) {
     if (!tables->decrementRecentRepeaterSnrX4(next_hop_hash, next_hop_hash_len, 1)) {
-      tables->setRecentRepeater(next_hop_hash, next_hop_hash_len, 7, false, true);
+      tables->setRecentRepeater(next_hop_hash, next_hop_hash_len, 11, false, true);
     }
   }
 }
