@@ -102,6 +102,7 @@ struct NodePrefs { // persisted to file
   int8_t direct_retry_cr5_snr_x4;
   int8_t direct_retry_cr7_snr_x4;
   int8_t direct_retry_cr8_snr_x4;
+  uint8_t direct_retry_enabled;
   uint8_t direct_retry_cr_enabled;
   uint8_t direct_retry_prefs_magic[2];
 };

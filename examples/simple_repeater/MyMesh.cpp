@@ -575,7 +575,8 @@ uint8_t MyMesh::getDirectRetryCodingRateForSNR(int8_t snr_x4) const {
   if (snr_x4 >= _prefs.direct_retry_cr4_snr_x4) return 4;
   if (snr_x4 >= _prefs.direct_retry_cr5_snr_x4) return 5;
   if (snr_x4 >= _prefs.direct_retry_cr7_snr_x4) return 7;
-  return 8;
+  if (snr_x4 <= _prefs.direct_retry_cr8_snr_x4) return 8;
+  return 7;
 }
 
 uint8_t MyMesh::getDirectRetryPreset() const {
@@ -592,6 +593,9 @@ uint32_t MyMesh::getDirectRetryAttemptStepMillis() const {
 
 bool MyMesh::allowDirectRetry(const mesh::Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const {
   (void)packet;
+  if (!_prefs.direct_retry_enabled) {
+    return false;
+  }
   if (next_hop_hash == NULL || next_hop_hash_len == 0) {
     return true;
   }
@@ -1108,6 +1112,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.direct_retry_cr5_snr_x4 = DIRECT_RETRY_CR5_MIN_SNR_X4_DEFAULT;
   _prefs.direct_retry_cr7_snr_x4 = DIRECT_RETRY_CR7_MIN_SNR_X4_DEFAULT;
   _prefs.direct_retry_cr8_snr_x4 = DIRECT_RETRY_CR8_MAX_SNR_X4_DEFAULT;
+  _prefs.direct_retry_enabled = 1;
   _prefs.direct_retry_cr_enabled = 1;
   _prefs.direct_retry_prefs_magic[0] = DIRECT_RETRY_PREFS_MAGIC_0;
   _prefs.direct_retry_prefs_magic[1] = DIRECT_RETRY_PREFS_MAGIC_1;

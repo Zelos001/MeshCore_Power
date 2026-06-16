@@ -101,6 +101,7 @@ static void setDefaultDirectRetryPrefs(NodePrefs* prefs) {
   prefs->direct_retry_cr5_snr_x4 = DIRECT_RETRY_CR5_MIN_SNR_X4_DEFAULT;
   prefs->direct_retry_cr7_snr_x4 = DIRECT_RETRY_CR7_MIN_SNR_X4_DEFAULT;
   prefs->direct_retry_cr8_snr_x4 = DIRECT_RETRY_CR8_MAX_SNR_X4_DEFAULT;
+  prefs->direct_retry_enabled = 1;
   markDirectRetryPrefsValid(prefs);
 }
 
@@ -209,9 +210,10 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     file.read((uint8_t *)&_prefs->direct_retry_cr5_snr_x4, sizeof(_prefs->direct_retry_cr5_snr_x4)); // 304
     file.read((uint8_t *)&_prefs->direct_retry_cr7_snr_x4, sizeof(_prefs->direct_retry_cr7_snr_x4)); // 305
     file.read((uint8_t *)&_prefs->direct_retry_cr8_snr_x4, sizeof(_prefs->direct_retry_cr8_snr_x4)); // 306
-    file.read((uint8_t *)&_prefs->direct_retry_cr_enabled, sizeof(_prefs->direct_retry_cr_enabled)); // 307
-    file.read((uint8_t *)&_prefs->direct_retry_prefs_magic, sizeof(_prefs->direct_retry_prefs_magic)); // 308
-    // next: 310
+    file.read((uint8_t *)&_prefs->direct_retry_enabled, sizeof(_prefs->direct_retry_enabled));       // 307
+    file.read((uint8_t *)&_prefs->direct_retry_cr_enabled, sizeof(_prefs->direct_retry_cr_enabled)); // 308
+    file.read((uint8_t *)&_prefs->direct_retry_prefs_magic, sizeof(_prefs->direct_retry_prefs_magic)); // 309
+    // next: 311
 
     // sanitise bad pref values
     _prefs->rx_delay_base = constrain(_prefs->rx_delay_base, 0, 20.0f);
@@ -253,6 +255,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {
     _prefs->direct_retry_base_ms = constrain(_prefs->direct_retry_base_ms, 10, 5000);
     _prefs->direct_retry_step_ms = constrain(_prefs->direct_retry_step_ms, 0, 5000);
     _prefs->direct_retry_snr_margin_x4 = constrain(_prefs->direct_retry_snr_margin_x4, 0, 160);
+    _prefs->direct_retry_enabled = constrain(_prefs->direct_retry_enabled, 0, 1);
     _prefs->direct_retry_cr_enabled = constrain(_prefs->direct_retry_cr_enabled, 0, 1);
 
     file.close();
@@ -329,9 +332,10 @@ void CommonCLI::savePrefs(FILESYSTEM* fs) {
     file.write((uint8_t *)&_prefs->direct_retry_cr5_snr_x4, sizeof(_prefs->direct_retry_cr5_snr_x4)); // 304
     file.write((uint8_t *)&_prefs->direct_retry_cr7_snr_x4, sizeof(_prefs->direct_retry_cr7_snr_x4)); // 305
     file.write((uint8_t *)&_prefs->direct_retry_cr8_snr_x4, sizeof(_prefs->direct_retry_cr8_snr_x4)); // 306
-    file.write((uint8_t *)&_prefs->direct_retry_cr_enabled, sizeof(_prefs->direct_retry_cr_enabled)); // 307
-    file.write((uint8_t *)&_prefs->direct_retry_prefs_magic, sizeof(_prefs->direct_retry_prefs_magic)); // 308
-    // next: 310
+    file.write((uint8_t *)&_prefs->direct_retry_enabled, sizeof(_prefs->direct_retry_enabled));       // 307
+    file.write((uint8_t *)&_prefs->direct_retry_cr_enabled, sizeof(_prefs->direct_retry_cr_enabled)); // 308
+    file.write((uint8_t *)&_prefs->direct_retry_prefs_magic, sizeof(_prefs->direct_retry_prefs_magic)); // 309
+    // next: 311
 
     file.close();
   }
@@ -833,6 +837,18 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     } else {
       strcpy(reply, "Error, must be infra, rooftop, or mobile");
     }
+  } else if (memcmp(config, "direct.retry ", 13) == 0) {
+    if (memcmp(&config[13], "on", 2) == 0) {
+      _prefs->direct_retry_enabled = 1;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else if (memcmp(&config[13], "off", 3) == 0) {
+      _prefs->direct_retry_enabled = 0;
+      savePrefs();
+      strcpy(reply, "OK");
+    } else {
+      strcpy(reply, "Error, must be on or off");
+    }
   } else if (memcmp(config, "direct.retry.margin ", 20) == 0) {
     if (!looksNumeric(&config[20])) {
       strcpy(reply, "Error, must be 0-40 dB");
@@ -1106,6 +1122,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %s", StrHelper::ftoa(_prefs->direct_tx_delay_factor));
   } else if (memcmp(config, "retry.preset", 12) == 0) {
     sprintf(reply, "> %s", retryPresetName(_prefs->retry_preset));
+  } else if (memcmp(config, "direct.retry", 12) == 0 && (config[12] == 0 || config[12] == ' ')) {
+    sprintf(reply, "> %s", _prefs->direct_retry_enabled ? "on" : "off");
   } else if (memcmp(config, "direct.retry.margin", 19) == 0) {
     char margin[12];
     formatSnrDbX4(margin, sizeof(margin), _prefs->direct_retry_snr_margin_x4);
