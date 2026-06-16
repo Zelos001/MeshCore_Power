@@ -1,19 +1,20 @@
-name: Build and deploy Docs site to GitHub Pages
+name: Docs
 
 on:
-  workflow_dispatch:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+
   github-pages:
+    name: Build and Deploy Docs
     runs-on: ubuntu-latest
     steps:
-
       - name: Checkout Repo
         uses: actions/checkout@v6
 

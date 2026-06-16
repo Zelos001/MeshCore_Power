@@ -1,0 +1,66 @@
+name: Release Firmwares
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'companion-*'
+      - 'repeater-*'
+      - 'room-server-*'
+
+permissions:
+  contents: write
+
+jobs:
+
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone Repo
+        uses: actions/checkout@v6
+
+      - name: Setup Build Environment
+        uses: ./.github/actions/setup-build-environment
+
+      - name: Determine Build Target
+        id: target
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            companion-*)
+              echo "cmd=build-companion-firmwares" >> "$GITHUB_OUTPUT"
+              echo "name=Companion Firmware" >> "$GITHUB_OUTPUT"
+              ;;
+            repeater-*)
+              echo "cmd=build-repeater-firmwares" >> "$GITHUB_OUTPUT"
+              echo "name=Repeater Firmware" >> "$GITHUB_OUTPUT"
+              ;;
+            room-server-*)
+              echo "cmd=build-room-server-firmwares" >> "$GITHUB_OUTPUT"
+              echo "name=Room Server Firmware" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "cmd=build-firmwares" >> "$GITHUB_OUTPUT"
+              echo "name=Firmware" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+
+      - name: Build Firmwares
+        env:
+          FIRMWARE_VERSION: ${{ env.GIT_TAG_VERSION || 'dev' }}
+        run: /usr/bin/env bash build.sh ${{ steps.target.outputs.cmd }}
+
+      - name: Upload Workflow Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: firmwares
+          path: out
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v3
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: ${{ steps.target.outputs.name }} ${{ env.GIT_TAG_VERSION }}
+          body: ""
+          draft: true
+          files: out/*
