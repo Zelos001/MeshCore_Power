@@ -163,6 +163,8 @@ protected:
   uint8_t getDirectRetryMaxAttempts(const mesh::Packet* packet) const override;
   uint32_t getDirectRetryAttemptDelay(const mesh::Packet* packet, uint8_t attempt_idx) override;
   void onDirectRetryEvent(const char* event, const mesh::Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) override;
+  void onDirectRetryFailed(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) override;
+  void onDirectRetrySucceeded(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len, int8_t snr_x4) override;
 
   int getInterferenceThreshold() const override {
     return _prefs.interference_threshold;
@@ -194,20 +196,6 @@ protected:
   void onControlDataRecv(mesh::Packet* packet) override;
 
   void sendFloodReply(mesh::Packet* packet, unsigned long delay_millis, uint8_t path_hash_size);
-  mesh::Packet* createPacketCopy(const mesh::Packet* packet, const char* caller);
-  mesh::Packet* createAltPathCopy(const mesh::Packet* packet,
-                                  const uint8_t* primary_path, uint8_t primary_path_len,
-                                  const uint8_t* alt_path, uint8_t alt_path_len);
-  void sendFloodReplyWithAltPath(mesh::Packet* packet,
-                                 const uint8_t* direct_path, uint8_t direct_path_len,
-                                 const uint8_t* alt_path, uint8_t alt_path_len,
-                                 unsigned long delay_millis, uint8_t path_hash_size);
-  void sendDirectWithAltPath(mesh::Packet* packet,
-                             const uint8_t* path, uint8_t path_len,
-                             const uint8_t* alt_path, uint8_t alt_path_len,
-                             uint32_t delay_millis);
-  void sendFloodScopedWithSelfPath(const TransportKey& scope, mesh::Packet* pkt,
-                                   uint32_t delay_millis, uint8_t path_hash_size);
 
 public:
   MyMesh(mesh::MainBoard& board, mesh::Radio& radio, mesh::MillisecondClock& ms, mesh::RNG& rng, mesh::RTCClock& rtc, mesh::MeshTables& tables);
@@ -248,6 +236,9 @@ public:
   void formatStatsReply(char *reply) override;
   void formatRadioStatsReply(char *reply) override;
   void formatPacketStatsReply(char *reply) override;
+  void formatRecentRepeatersReply(char *reply, int page) override;
+  bool setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4) override;
+  void clearRecentRepeaters() override;
   void startRegionsLoad() override;
   bool saveRegions() override;
   void onDefaultRegionChanged(const RegionEntry* r) override;
@@ -257,10 +248,7 @@ public:
   void saveIdentity(const mesh::LocalIdentity& new_id) override;
   void clearStats() override;
 
-  void handleCommand(uint32_t sender_timestamp, ClientInfo* sender, char* command, char* reply);
-  void handleCommand(uint32_t sender_timestamp, char* command, char* reply) {
-    handleCommand(sender_timestamp, NULL, command, reply);
-  }
+  void handleCommand(uint32_t sender_timestamp, char* command, char* reply);
   void loop();
 
 #if defined(WITH_BRIDGE)

@@ -9,8 +9,7 @@
   #include <FS.h>
 #endif
 
-#define MAX_PACKET_HASHES  128
-#define MAX_PACKET_ACKS     64
+#define MAX_PACKET_HASHES  (128+32)
 #ifndef MAX_RECENT_REPEATERS
   // Platform defaults. Can be overridden with -D MAX_RECENT_REPEATERS=<n>.
   #if defined(ESP32) || defined(ESP32_PLATFORM)
@@ -39,28 +38,12 @@ public:
 private:
   uint8_t _hashes[MAX_PACKET_HASHES*MAX_HASH_SIZE];
   int _next_idx;
-  uint32_t _acks[MAX_PACKET_ACKS];
-  int _next_ack_idx;
   uint32_t _direct_dups, _flood_dups;
   RecentRepeaterInfo _recent_repeaters[MAX_RECENT_REPEATERS];
   int _next_recent_repeater_idx;
   int8_t _recent_repeater_min_snr_x4;
   RecentRepeaterAllowFn _recent_repeater_allow_fn;
   void* _recent_repeater_allow_ctx;
-
-  bool hasSeenAck(uint32_t ack) const {
-    for (int i = 0; i < MAX_PACKET_ACKS; i++) {
-      if (ack == _acks[i]) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  void storeAck(uint32_t ack) {
-    _acks[_next_ack_idx] = ack;
-    _next_ack_idx = (_next_ack_idx + 1) % MAX_PACKET_ACKS;
-  }
 
   bool hasSeenHash(const uint8_t* hash) const {
     const uint8_t* sp = _hashes;
@@ -148,8 +131,6 @@ public:
   SimpleMeshTables() { 
     memset(_hashes, 0, sizeof(_hashes));
     _next_idx = 0;
-    memset(_acks, 0, sizeof(_acks));
-    _next_ack_idx = 0;
     _direct_dups = _flood_dups = 0;
     memset(_recent_repeaters, 0, sizeof(_recent_repeaters));
     _next_recent_repeater_idx = 0;
@@ -162,8 +143,6 @@ public:
   void restoreFrom(File f) {
     f.read(_hashes, sizeof(_hashes));
     f.read((uint8_t *) &_next_idx, sizeof(_next_idx));
-    f.read((uint8_t *) &_acks[0], sizeof(_acks));
-    f.read((uint8_t *) &_next_ack_idx, sizeof(_next_ack_idx));
     // Recent repeater entries are intentionally not restored across boots.
     // This avoids struct-layout migration issues and keeps stale path quality
     // stats from persisting indefinitely.
@@ -173,31 +152,10 @@ public:
   void saveTo(File f) {
     f.write(_hashes, sizeof(_hashes));
     f.write((const uint8_t *) &_next_idx, sizeof(_next_idx));
-    f.write((const uint8_t *) &_acks[0], sizeof(_acks));
-    f.write((const uint8_t *) &_next_ack_idx, sizeof(_next_ack_idx));
   }
 #endif
 
   bool hasSeen(const mesh::Packet* packet) override {
-    if (packet->getPayloadType() == PAYLOAD_TYPE_ACK) {
-      recordRecentRepeater(packet);
-
-      uint32_t ack;
-      memcpy(&ack, packet->payload, 4);
-
-      if (hasSeenAck(ack)) {
-        if (packet->isRouteDirect()) {
-          _direct_dups++;   // keep some stats
-        } else {
-          _flood_dups++;
-        }
-        return true;
-      }
-
-      storeAck(ack);
-      return false;
-    }
-
     uint8_t hash[MAX_HASH_SIZE];
     packet->calculatePacketHash(hash);
 
@@ -217,15 +175,6 @@ public:
 
   void markSent(const mesh::Packet* packet) override {
     // Outbound packets must be marked as already-sent without teaching the recent-heard cache about ourselves.
-    if (packet->getPayloadType() == PAYLOAD_TYPE_ACK) {
-      uint32_t ack;
-      memcpy(&ack, packet->payload, 4);
-      if (!hasSeenAck(ack)) {
-        storeAck(ack);
-      }
-      return;
-    }
-
     uint8_t hash[MAX_HASH_SIZE];
     packet->calculatePacketHash(hash);
     if (!hasSeenHash(hash)) {
@@ -234,25 +183,14 @@ public:
   }
 
   void clear(const mesh::Packet* packet) override {
-    if (packet->getPayloadType() == PAYLOAD_TYPE_ACK) {
-      uint32_t ack;
-      memcpy(&ack, packet->payload, 4);
-      for (int i = 0; i < MAX_PACKET_ACKS; i++) {
-        if (ack == _acks[i]) { 
-          _acks[i] = 0;
-          break;
-        }
-      }
-    } else {
-      uint8_t hash[MAX_HASH_SIZE];
-      packet->calculatePacketHash(hash);
+    uint8_t hash[MAX_HASH_SIZE];
+    packet->calculatePacketHash(hash);
 
-      uint8_t* sp = _hashes;
-      for (int i = 0; i < MAX_PACKET_HASHES; i++, sp += MAX_HASH_SIZE) {
-        if (memcmp(hash, sp, MAX_HASH_SIZE) == 0) { 
-          memset(sp, 0, MAX_HASH_SIZE);
-          break;
-        }
+    uint8_t* sp = _hashes;
+    for (int i = 0; i < MAX_PACKET_HASHES; i++, sp += MAX_HASH_SIZE) {
+      if (memcmp(hash, sp, MAX_HASH_SIZE) == 0) { 
+        memset(sp, 0, MAX_HASH_SIZE);
+        break;
       }
     }
   }
@@ -282,16 +220,12 @@ public:
       return false;
     }
 
-    // Keep one slot for overlapping prefixes so 1/2/3-byte paths share the same entry.
+    // Keep exact prefixes distinct so a 1-byte path prefix does not collapse
+    // independent 2/3-byte repeaters that share the same first byte.
     for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
       RecentRepeaterInfo& existing = _recent_repeaters[i];
-      if (existing.prefix_len == 0 || !prefixesOverlap(existing.prefix, existing.prefix_len, prefix, prefix_len)) {
+      if (existing.prefix_len != prefix_len || memcmp(existing.prefix, prefix, prefix_len) != 0) {
         continue;
-      }
-      if (prefix_len > existing.prefix_len) {
-        memset(existing.prefix, 0, sizeof(existing.prefix));
-        memcpy(existing.prefix, prefix, prefix_len);
-        existing.prefix_len = prefix_len;
       }
       if (snr_locked) {
         existing.snr_x4 = snr_x4;
@@ -352,13 +286,8 @@ public:
 
     for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
       RecentRepeaterInfo& existing = _recent_repeaters[i];
-      if (existing.prefix_len == 0 || !prefixesOverlap(existing.prefix, existing.prefix_len, prefix, prefix_len)) {
+      if (existing.prefix_len != prefix_len || memcmp(existing.prefix, prefix, prefix_len) != 0) {
         continue;
-      }
-      if (prefix_len > existing.prefix_len) {
-        memset(existing.prefix, 0, sizeof(existing.prefix));
-        memcpy(existing.prefix, prefix, prefix_len);
-        existing.prefix_len = prefix_len;
       }
       if (!existing.snr_locked) {
         int16_t lowered = (int16_t)existing.snr_x4 - (int16_t)amount_x4;
@@ -432,18 +361,25 @@ public:
       return NULL;
     }
 
-    // Search newest-to-oldest and allow 1/2/3-byte prefixes to overlap-match.
+    // Prefer exact matches. If none exists, fall back to the newest longest
+    // overlapping prefix so coarse learned prefixes can still inform CR.
+    const RecentRepeaterInfo* best = NULL;
     for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
       int idx = (_next_recent_repeater_idx - 1 - i + MAX_RECENT_REPEATERS) % MAX_RECENT_REPEATERS;
       const RecentRepeaterInfo* info = &_recent_repeaters[idx];
       if (info->prefix_len == 0) {
         continue;
       }
-      if (prefixesOverlap(info->prefix, info->prefix_len, hash, hash_len)) {
+      if (info->prefix_len == hash_len && memcmp(info->prefix, hash, hash_len) == 0) {
         return info;
       }
+      if (prefixesOverlap(info->prefix, info->prefix_len, hash, hash_len)) {
+        if (best == NULL || info->prefix_len > best->prefix_len) {
+          best = info;
+        }
+      }
     }
-    return NULL;
+    return best;
   }
   void clearRecentRepeaters() {
     memset(_recent_repeaters, 0, sizeof(_recent_repeaters));
