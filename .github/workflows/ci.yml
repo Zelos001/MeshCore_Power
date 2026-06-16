@@ -44,16 +44,13 @@ jobs:
       matrix:
         environment:
           - Heltec_v3_companion_radio_ble
-          - Heltec_v3_repeater
-          - Heltec_v3_room_server
           - RAK_4631_companion_radio_ble
-          - RAK_4631_repeater
-          - RAK_4631_room_server
-          - PicoW_repeater
+          - LilyGo_T3S3_sx1276_companion_radio_usb
+          - Xiao_rp2040_companion_radio_usb
           - wio-e5-mini_repeater
           - LilyGo_Tlora_C6_repeater_
-          - wio_wm1110_repeater
-          - Tbeam_SX1276_repeater
+          - wio_wm1110_room_server
+          - Tbeam_SX1262_room_server
     steps:
       - name: Clone Repo
         uses: actions/checkout@v6
