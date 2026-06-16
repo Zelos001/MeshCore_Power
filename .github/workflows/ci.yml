@@ -36,37 +36,24 @@ jobs:
           name: test-results
           path: .pio/build/native/
 
-  generate-matrix:
-    name: Generate Build Matrix
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set.outputs.matrix }}
-    steps:
-      - name: Clone Repo
-        uses: actions/checkout@v6
-
-      - name: Setup Build Environment
-        uses: ./.github/actions/setup-build-environment
-
-      - name: Generate Matrix
-        id: set
-        run: |
-          python3 - <<'EOF' >> "$GITHUB_OUTPUT"
-          import json, subprocess
-          data = json.loads(subprocess.check_output(["pio", "project", "config", "--json-output"]))
-          envs = sorted(s[4:] for s, _ in data if s.startswith("env:") and s != "env:native")
-          size = 4
-          chunks = [" ".join(envs[i:i + size]) for i in range(0, len(envs), size)]
-          print("matrix=" + json.dumps({"chunk": chunks}))
-          EOF
-
   build:
     name: Build
-    needs: generate-matrix
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.generate-matrix.outputs.matrix) }}
+      matrix:
+        environment:
+          - Heltec_v3_companion_radio_ble
+          - Heltec_v3_repeater
+          - Heltec_v3_room_server
+          - RAK_4631_companion_radio_ble
+          - RAK_4631_repeater
+          - RAK_4631_room_server
+          - PicoW_repeater
+          - wio-e5-mini_repeater
+          - LilyGo_Tlora_C6_repeater_
+          - wio_wm1110_repeater
+          - Tbeam_SX1276_repeater
     steps:
       - name: Clone Repo
         uses: actions/checkout@v6
@@ -74,10 +61,5 @@ jobs:
       - name: Setup Build Environment
         uses: ./.github/actions/setup-build-environment
 
-      - name: Build Environments
-        run: |
-          for env in ${{ matrix.chunk }}; do
-            echo "::group::$env"
-            pio run -e "$env"
-            echo "::endgroup::"
-          done
+      - name: Build ${{ matrix.environment }}
+        run: pio run -e ${{ matrix.environment }}
