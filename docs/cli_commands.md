@@ -1155,7 +1155,6 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 **Usage:**
 - `get recent.repeater`
 - `get recent.repeater <page>`
-- `get recent.repeater page <page>`
 - `set recent.repeater <prefix> <snr_db>`
 - `clear recent.repeater`
 
@@ -1177,7 +1176,6 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 ```
 get recent.repeater
 get recent.repeater 2
-get recent.repeater page 3
 set recent.repeater A1B2C3 8.5
 set recent.repeater 71CE82 -3.25
 clear recent.repeater

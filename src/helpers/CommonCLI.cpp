@@ -1149,7 +1149,6 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     int page = 1;
     const char* cursor = &config[15];
     while (*cursor == ' ') cursor++;
-    if (memcmp(cursor, "page ", 5) == 0) cursor += 5;
     if (*cursor) page = _atoi(cursor);
     if (page < 1) page = 1;
     _callbacks->formatRecentRepeatersReply(reply, page);
