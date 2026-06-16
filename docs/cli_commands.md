@@ -1155,12 +1155,12 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 **Usage:**
 - `get recent.repeater`
 - `get recent.repeater <page>`
-- `set recent.repeater <prefix> <snr_db>`
+- `set recent.repeater <prefix> [snr_db]`
 - `clear recent.repeater`
 
 **Parameters:**
 - `prefix`: Repeater path-hash prefix as hex.
-- `snr_db`: SNR in dB.
+- `snr_db`: Optional SNR in dB. If omitted or invalid, defaults to `3.0`.
 - `page`: 1-based result page.
 
 **SNR details:**
@@ -1170,7 +1170,8 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 - Direct retry failure is not weighted: each final echo-timeout failure lowers that repeater's SNR by `0.25 dB`.
 - Unknown repeaters start at `+3.00 dB` for adaptive CR selection.
 - If an unknown repeater fails, it is seeded into the table at `+2.75 dB`.
-- `set recent.repeater <prefix> <snr_db>` seeds a missing prefix or adds another weighted sample for an existing prefix.
+- `set recent.repeater <prefix> [snr_db]` seeds a missing prefix or adds another weighted sample for an existing prefix.
+- Successful `set recent.repeater` replies include the stored prefix and SNR, for example `OK - set A1B2C3 at 3.0 SNR`.
 
 **Examples:**
 ```
@@ -1178,6 +1179,7 @@ get recent.repeater
 get recent.repeater 2
 set recent.repeater A1B2C3 8.5
 set recent.repeater 71CE82 -3.25
+set recent.repeater A1B2C3
 clear recent.repeater
 ```
 

@@ -9,6 +9,8 @@
 #define BRIDGE_MAX_BAUD 115200
 #endif
 
+#define RECENT_REPEATER_PREFIX_MAX_BYTES  3
+
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
   uint32_t n = 0;
@@ -128,11 +130,19 @@ static bool parseRetryPreset(const char* s, uint8_t& preset) {
 
 static bool parseHashPrefix(const char* text, uint8_t* prefix, uint8_t& prefix_len) {
   size_t hex_len = strlen(text);
-  if (hex_len == 0 || (hex_len & 1) || hex_len > MAX_HASH_SIZE * 2) {
+  if (hex_len == 0 || (hex_len & 1) || hex_len > RECENT_REPEATER_PREFIX_MAX_BYTES * 2) {
     return false;
   }
   prefix_len = hex_len / 2;
   return mesh::Utils::fromHex(prefix, prefix_len, text);
+}
+
+static void formatSnrDbX4Short(char* dest, size_t dest_len, int16_t snr_x4) {
+  formatSnrDbX4(dest, dest_len, snr_x4);
+  size_t len = strlen(dest);
+  if (len > 3 && dest[len - 1] == '0') {
+    dest[len - 1] = 0;
+  }
 }
 
 void CommonCLI::loadPrefs(FILESYSTEM* fs) {
@@ -928,13 +938,21 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
     int num = mesh::Utils::parseTextParts(tmp, parts, 2, ' ');
     uint8_t prefix[MAX_HASH_SIZE];
     uint8_t prefix_len = 0;
-    int16_t snr_x4 = num > 1 && looksNumeric(parts[1]) ? parseSnrDbX4(parts[1]) : 0;
-    if (num != 2 || !parseHashPrefix(parts[0], prefix, prefix_len)) {
-      strcpy(reply, "Error, use: set recent.repeater <hex> <snr_db>");
+    int16_t snr_x4 = 12;  // default to +3.0 dB when omitted or invalid
+    if (num > 1 && looksNumeric(parts[1])) {
+      snr_x4 = parseSnrDbX4(parts[1]);
+    }
+    if (num < 1 || !parseHashPrefix(parts[0], prefix, prefix_len)) {
+      strcpy(reply, "Error, use: set recent.repeater <hex> [snr_db]");
     } else if (snr_x4 < -128 || snr_x4 > 127) {
       strcpy(reply, "Error, SNR must fit -32.00..31.75 dB");
     } else if (_callbacks->setRecentRepeater(prefix, prefix_len, (int8_t)snr_x4)) {
-      strcpy(reply, "OK");
+      char prefix_hex[RECENT_REPEATER_PREFIX_MAX_BYTES * 2 + 1];
+      char snr[12];
+      mesh::Utils::toHex(prefix_hex, prefix, prefix_len);
+      prefix_hex[prefix_len * 2] = 0;
+      formatSnrDbX4Short(snr, sizeof(snr), snr_x4);
+      sprintf(reply, "OK - set %s at %s SNR", prefix_hex, snr);
     } else {
       strcpy(reply, "Error, table rejected prefix");
     }
