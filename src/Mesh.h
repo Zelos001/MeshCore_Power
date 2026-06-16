@@ -82,7 +82,7 @@ protected:
 
   /**
    * \brief    Called _before_ the packet is dispatched to the on..Recv() methods.
-   * \returns  true, if given packet should be NOT be processed.
+   * \returns  true, if given packet should NOT be processed.
    */
   virtual bool filterRecvFloodPacket(Packet* packet) { return false; }
 
