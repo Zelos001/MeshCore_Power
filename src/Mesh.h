@@ -29,8 +29,8 @@ public:
  *     and provides virtual methods for sub-classes on handling incoming, and also preparing outbound Packets.
 */
 class Mesh : public Dispatcher {
-  RNG* _rng;
   RTCClock* _rtc;
+  RNG* _rng;
   MeshTables* _tables;
 
   struct DirectRetryEntry {
@@ -104,13 +104,10 @@ protected:
 
   /**
    * \brief  Decide whether a DIRECT packet should get one delayed retry if the next hop echo is not overheard.
-   *         Sub-classes can use neighbour tables or other link-quality data to opt in selectively.
+   *         Sub-classes can use recent repeater or other link-quality data to opt in selectively.
    */
   virtual bool allowDirectRetry(const Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const;
 
-  /**
-   * \brief  Allow subclasses to rewrite a non-TRACE DIRECT packet path when this node can safely skip ahead.
-   */
   /**
    * \returns  milliseconds to wait for the next-hop echo before queueing one retry of the DIRECT packet.
    */
