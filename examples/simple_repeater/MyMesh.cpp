@@ -574,8 +574,8 @@ uint8_t MyMesh::getDirectRetryCodingRateForSNR(int8_t snr_x4) const {
   if (!_prefs.direct_retry_cr_enabled) return 0;
   if (snr_x4 >= _prefs.direct_retry_cr4_snr_x4) return 4;
   if (snr_x4 >= _prefs.direct_retry_cr5_snr_x4) return 5;
-  if (snr_x4 >= _prefs.direct_retry_cr7_snr_x4) return 7;
   if (snr_x4 <= _prefs.direct_retry_cr8_snr_x4) return 8;
+  if (snr_x4 >= _prefs.direct_retry_cr7_snr_x4) return 7;
   return 7;
 }
 

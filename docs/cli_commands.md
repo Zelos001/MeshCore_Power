@@ -953,7 +953,7 @@ region save
 ---
 ### Direct Retry
 
-Direct retry resends direct-routed packets when the downstream echo is not heard. It applies to direct messages and TRACE packets. It does not change ACK handling.
+Direct retry resends direct-routed packets when the downstream echo is not heard. It applies to direct messages, ACK packets, multipart packets carrying ACK payloads, and TRACE packets.
 
 #### View or change direct retry state
 **Usage:**
