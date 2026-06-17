@@ -674,7 +674,7 @@ void MyMesh::onDirectRetryFailed(const uint8_t* next_hop_hash, uint8_t next_hop_
   SimpleMeshTables* tables = static_cast<SimpleMeshTables*>(getTables());
   if (tables != NULL) {
     if (!tables->decrementRecentRepeaterSnrX4(next_hop_hash, next_hop_hash_len, 1)) {
-      tables->setRecentRepeater(next_hop_hash, next_hop_hash_len, 11, false, true);
+      tables->setRecentRepeater(next_hop_hash, next_hop_hash_len, 11);
     }
   }
 }
@@ -686,7 +686,7 @@ void MyMesh::onDirectRetrySucceeded(const uint8_t* next_hop_hash, uint8_t next_h
 
   SimpleMeshTables* tables = static_cast<SimpleMeshTables*>(getTables());
   if (tables != NULL) {
-    tables->setRecentRepeater(next_hop_hash, next_hop_hash_len, snr_x4, false, true);
+    tables->setRecentRepeater(next_hop_hash, next_hop_hash_len, snr_x4);
   }
 }
 
@@ -720,7 +720,7 @@ void MyMesh::formatRecentRepeatersReply(char *reply, int page) {
   int len = snprintf(reply, 160, "> %d/%d ", page, pages);
   int start = (page - 1) * page_size;
   for (int i = 0; i < page_size && len < 150; i++) {
-    const SimpleMeshTables::RecentRepeaterInfo* info = tables->getRecentRepeaterNewestByIdx(start + i);
+    const SimpleMeshTables::RecentRepeaterInfo* info = tables->getRecentRepeaterBySortedIdx(start + i);
     if (info == NULL) break;
     char prefix[MAX_ROUTE_HASH_BYTES * 2 + 1];
     char snr[12];
@@ -736,7 +736,7 @@ void MyMesh::formatRecentRepeatersReply(char *reply, int page) {
 
 bool MyMesh::setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4) {
   SimpleMeshTables* tables = static_cast<SimpleMeshTables*>(getTables());
-  return tables != NULL && tables->setRecentRepeater(prefix, prefix_len, snr_x4, false, true);
+  return tables != NULL && tables->setRecentRepeater(prefix, prefix_len, snr_x4);
 }
 
 void MyMesh::clearRecentRepeaters() {

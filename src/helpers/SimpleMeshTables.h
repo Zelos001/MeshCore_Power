@@ -1,9 +1,6 @@
 #pragma once
 
 #include <Mesh.h>
-#if ARDUINO
-  #include <Arduino.h>
-#endif
 
 #ifdef ESP32
   #include <FS.h>
@@ -24,15 +21,11 @@
 
 class SimpleMeshTables : public mesh::MeshTables {
 public:
-  typedef bool (*RecentRepeaterAllowFn)(const uint8_t* prefix, uint8_t prefix_len, void* ctx);
-
   struct RecentRepeaterInfo {
     // Identity and link quality for a next-hop path prefix.
     uint8_t prefix[MAX_ROUTE_HASH_BYTES];
     uint8_t prefix_len;
     int8_t snr_x4;
-    uint8_t snr_locked;
-    uint32_t last_heard_millis;
   };
 
 private:
@@ -40,10 +33,6 @@ private:
   int _next_idx;
   uint32_t _direct_dups, _flood_dups;
   RecentRepeaterInfo _recent_repeaters[MAX_RECENT_REPEATERS];
-  int _next_recent_repeater_idx;
-  int8_t _recent_repeater_min_snr_x4;
-  RecentRepeaterAllowFn _recent_repeater_allow_fn;
-  void* _recent_repeater_allow_ctx;
 
   bool hasSeenHash(const uint8_t* hash) const {
     const uint8_t* sp = _hashes;
@@ -115,13 +104,25 @@ private:
     return false;
   }
 
+  bool recentRepeaterComesBefore(const RecentRepeaterInfo& a, int a_idx,
+                                 const RecentRepeaterInfo& b, int b_idx) const {
+    if (a.prefix_len != b.prefix_len) {
+      return a.prefix_len > b.prefix_len;  // 3-byte prefixes, then 2-byte, then 1-byte.
+    }
+    if (a.snr_x4 != b.snr_x4) {
+      return a.snr_x4 > b.snr_x4;  // Highest SNR first within each prefix length.
+    }
+    int cmp = memcmp(a.prefix, b.prefix, a.prefix_len);
+    if (cmp != 0) {
+      return cmp < 0;
+    }
+    return a_idx < b_idx;
+  }
+
   void recordRecentRepeater(const mesh::Packet* packet) {
     uint8_t prefix[MAX_ROUTE_HASH_BYTES] = {0};
     uint8_t prefix_len = 0;
     if (!extractRecentRepeater(packet, prefix, prefix_len) || prefix_len == 0) {
-      return;
-    }
-    if (packet->_snr < _recent_repeater_min_snr_x4) {
       return;
     }
     setRecentRepeater(prefix, prefix_len, packet->_snr);
@@ -133,10 +134,6 @@ public:
     _next_idx = 0;
     _direct_dups = _flood_dups = 0;
     memset(_recent_repeaters, 0, sizeof(_recent_repeaters));
-    _next_recent_repeater_idx = 0;
-    _recent_repeater_min_snr_x4 = -128;
-    _recent_repeater_allow_fn = NULL;
-    _recent_repeater_allow_ctx = NULL;
   }
 
 #ifdef ESP32
@@ -147,7 +144,6 @@ public:
     // This avoids struct-layout migration issues and keeps stale path quality
     // stats from persisting indefinitely.
     memset(_recent_repeaters, 0, sizeof(_recent_repeaters));
-    _next_recent_repeater_idx = 0;
   }
   void saveTo(File f) {
     f.write(_hashes, sizeof(_hashes));
@@ -198,26 +194,13 @@ public:
   uint32_t getNumDirectDups() const { return _direct_dups; }
   uint32_t getNumFloodDups() const { return _flood_dups; }
 
-  void setRecentRepeaterMinSNRX4(int8_t min_snr_x4) {
-    _recent_repeater_min_snr_x4 = min_snr_x4;
-  }
-  void setRecentRepeaterAllowFilter(RecentRepeaterAllowFn fn, void* ctx) {
-    _recent_repeater_allow_fn = fn;
-    _recent_repeater_allow_ctx = ctx;
-  }
-  bool setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4, bool snr_locked = false,
-                         bool bypass_allow_filter = false) {
+  bool setRecentRepeater(const uint8_t* prefix, uint8_t prefix_len, int8_t snr_x4) {
     if (prefix == NULL || prefix_len == 0) {
       return false;
     }
 
     if (prefix_len > MAX_ROUTE_HASH_BYTES) {
       prefix_len = MAX_ROUTE_HASH_BYTES;
-    }
-
-    if (!bypass_allow_filter && _recent_repeater_allow_fn != NULL
-        && !_recent_repeater_allow_fn(prefix, prefix_len, _recent_repeater_allow_ctx)) {
-      return false;
     }
 
     // Keep exact prefixes distinct so a 1-byte path prefix does not collapse
@@ -227,26 +210,14 @@ public:
       if (existing.prefix_len != prefix_len || memcmp(existing.prefix, prefix, prefix_len) != 0) {
         continue;
       }
-      if (snr_locked) {
-        existing.snr_x4 = snr_x4;
-        existing.snr_locked = 1;
-      } else if (!existing.snr_locked) {
-        existing.snr_x4 = weightedSnrX4RoundUp(existing.snr_x4, snr_x4);
-      }
-#if ARDUINO
-      existing.last_heard_millis = millis();
-#else
-      existing.last_heard_millis = 0;
-#endif
+      existing.snr_x4 = weightedSnrX4RoundUp(existing.snr_x4, snr_x4);
       return true;
     }
 
     int slot_idx = -1;
-    // Prefer empty slots first while preserving newest-order iteration.
     for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
-      int idx = (_next_recent_repeater_idx + i) % MAX_RECENT_REPEATERS;
-      if (_recent_repeaters[idx].prefix_len == 0) {
-        slot_idx = idx;
+      if (_recent_repeaters[i].prefix_len == 0) {
+        slot_idx = i;
         break;
       }
     }
@@ -267,13 +238,6 @@ public:
     memcpy(slot.prefix, prefix, prefix_len);
     slot.prefix_len = prefix_len;
     slot.snr_x4 = snr_x4;
-    slot.snr_locked = snr_locked ? 1 : 0;
-#if ARDUINO
-    slot.last_heard_millis = millis();
-#else
-    slot.last_heard_millis = 0;
-#endif
-    _next_recent_repeater_idx = (slot_idx + 1) % MAX_RECENT_REPEATERS;
     return true;
   }
   bool decrementRecentRepeaterSnrX4(const uint8_t* prefix, uint8_t prefix_len, uint8_t amount_x4 = 1) {
@@ -289,26 +253,14 @@ public:
       if (existing.prefix_len != prefix_len || memcmp(existing.prefix, prefix, prefix_len) != 0) {
         continue;
       }
-      if (!existing.snr_locked) {
-        int16_t lowered = (int16_t)existing.snr_x4 - (int16_t)amount_x4;
-        if (lowered < -128) {
-          lowered = -128;
-        }
-        existing.snr_x4 = (int8_t)lowered;
+      int16_t lowered = (int16_t)existing.snr_x4 - (int16_t)amount_x4;
+      if (lowered < -128) {
+        lowered = -128;
       }
+      existing.snr_x4 = (int8_t)lowered;
       return true;
     }
     return false;
-  }
-  const RecentRepeaterInfo* getLatestRecentRepeater() const {
-    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
-      int idx = (_next_recent_repeater_idx - 1 - i + MAX_RECENT_REPEATERS) % MAX_RECENT_REPEATERS;
-      const RecentRepeaterInfo* info = &_recent_repeaters[idx];
-      if (info->prefix_len > 0) {
-        return info;
-      }
-    }
-    return NULL;
   }
   int getRecentRepeaterCount() const {
     int count = 0;
@@ -319,41 +271,36 @@ public:
     }
     return count;
   }
-  const RecentRepeaterInfo* getRecentRepeaterNewestByIdx(int idx_wanted) const {
+  const RecentRepeaterInfo* getRecentRepeaterBySortedIdx(int idx_wanted) const {
     if (idx_wanted < 0) {
       return NULL;
     }
-    int idx_seen = 0;
-    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
-      int idx = (_next_recent_repeater_idx - 1 - i + MAX_RECENT_REPEATERS) % MAX_RECENT_REPEATERS;
-      const RecentRepeaterInfo* info = &_recent_repeaters[idx];
-      if (info->prefix_len == 0) {
-        continue;
+
+    const RecentRepeaterInfo* last = NULL;
+    int last_idx = -1;
+    for (int rank = 0; rank <= idx_wanted; rank++) {
+      const RecentRepeaterInfo* best = NULL;
+      int best_idx = -1;
+      for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
+        const RecentRepeaterInfo* info = &_recent_repeaters[i];
+        if (info->prefix_len == 0) {
+          continue;
+        }
+        if (last != NULL && !recentRepeaterComesBefore(*last, last_idx, *info, i)) {
+          continue;
+        }
+        if (best == NULL || recentRepeaterComesBefore(*info, i, *best, best_idx)) {
+          best = info;
+          best_idx = i;
+        }
       }
-      if (idx_seen == idx_wanted) {
-        return info;
+      if (best == NULL) {
+        return NULL;
       }
-      idx_seen++;
+      last = best;
+      last_idx = best_idx;
     }
-    return NULL;
-  }
-  const RecentRepeaterInfo* getRecentRepeaterOldestByIdx(int idx_wanted) const {
-    if (idx_wanted < 0) {
-      return NULL;
-    }
-    int idx_seen = 0;
-    for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
-      int idx = (_next_recent_repeater_idx + i) % MAX_RECENT_REPEATERS;
-      const RecentRepeaterInfo* info = &_recent_repeaters[idx];
-      if (info->prefix_len == 0) {
-        continue;
-      }
-      if (idx_seen == idx_wanted) {
-        return info;
-      }
-      idx_seen++;
-    }
-    return NULL;
+    return last;
   }
 
   const RecentRepeaterInfo* findRecentRepeaterByHash(const uint8_t* hash, uint8_t hash_len) const {
@@ -361,12 +308,11 @@ public:
       return NULL;
     }
 
-    // Prefer exact matches. If none exists, fall back to the newest longest
-    // overlapping prefix so coarse learned prefixes can still inform CR.
+    // Prefer exact matches. If none exists, fall back to the longest overlapping
+    // prefix, using highest SNR to break ties.
     const RecentRepeaterInfo* best = NULL;
     for (int i = 0; i < MAX_RECENT_REPEATERS; i++) {
-      int idx = (_next_recent_repeater_idx - 1 - i + MAX_RECENT_REPEATERS) % MAX_RECENT_REPEATERS;
-      const RecentRepeaterInfo* info = &_recent_repeaters[idx];
+      const RecentRepeaterInfo* info = &_recent_repeaters[i];
       if (info->prefix_len == 0) {
         continue;
       }
@@ -374,7 +320,8 @@ public:
         return info;
       }
       if (prefixesOverlap(info->prefix, info->prefix_len, hash, hash_len)) {
-        if (best == NULL || info->prefix_len > best->prefix_len) {
+        if (best == NULL || info->prefix_len > best->prefix_len
+            || (info->prefix_len == best->prefix_len && info->snr_x4 > best->snr_x4)) {
           best = info;
         }
       }
@@ -383,7 +330,6 @@ public:
   }
   void clearRecentRepeaters() {
     memset(_recent_repeaters, 0, sizeof(_recent_repeaters));
-    _next_recent_repeater_idx = 0;
   }
 
   void resetStats() { _direct_dups = _flood_dups = 0; }

@@ -965,6 +965,9 @@ Direct retry resends direct-routed packets when the downstream echo is not heard
 
 **Default:** `on`
 
+**Notes:**
+- New installs and older preference files without direct retry settings default to `on` with the `rooftop` preset.
+
 **Examples:**
 ```
 get direct.retry
@@ -1115,6 +1118,7 @@ set direct.retry.margin 10
 - Lower SNR uses more robust coding rates.
 - CR6 is intentionally skipped.
 - `off` disables per-packet retry CR overrides and uses the current radio CR.
+- Direct path retry packets sent at CR4 or CR5 temporarily use a shorter 16-symbol preamble, then restore the radio's default preamble.
 - Unknown repeaters start at `+3.00 dB` for adaptive CR selection.
 - A failed unknown repeater is seeded at `+2.75 dB`.
 - Each later failure lowers the SNR estimate by `0.25 dB`.
@@ -1162,6 +1166,10 @@ set direct.retry.cr 20.0,12.0,6.0,2.0
 - `prefix`: Repeater path-hash prefix as hex.
 - `snr_db`: Optional SNR in dB. If omitted or invalid, defaults to `3.0`.
 - `page`: 1-based result page.
+
+**Output order:**
+- `get recent.repeater` lists 3-byte prefixes first, then 2-byte prefixes, then 1-byte prefixes.
+- Within each prefix length, entries are sorted from highest SNR to lowest SNR.
 
 **SNR details:**
 - Recent repeater SNR is stored internally in quarter-dB units.
