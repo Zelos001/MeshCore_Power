@@ -40,17 +40,38 @@
 
 #define UI_TXT_OFS    10
 #define UI_MARGIN     5
-#define UI_HUD_TEXT   14
-#define UI_HUD_SEP    20
-#define UI_TITLE_Y    36
-#define UI_TITLE_RULE 40
-#define UI_BODY_Y0    56
-#define UI_ROW_H      16
-#define UI_ICON_Y     46
-#define UI_ICON_LABEL 100
-#define UI_FOOTER_SEP 112
-#define UI_FOOTER_DOT 118
-#define UI_FOOTER_Y   124
+
+struct UILayout {
+  bool compact;
+  int hud_text;
+  int hud_sep;
+  int title_y;
+  int title_rule;
+  int body_y0;
+  int row_h;
+  int icon_y;
+  int icon_label;
+  int footer_sep;
+  int footer_dot;
+  int footer_y;
+};
+
+static const UILayout UI_TALL    = { false, 14, 20, 36, 40, 56, 16, 46, 100, 112, 118, 124 };
+static const UILayout UI_COMPACT = { true,   0, 11, 12, 20, 22,  9, 20,  52,  60,  62,  54 };
+
+static UILayout g_ui = UI_TALL;
+
+#define UI_HUD_TEXT   (g_ui.hud_text)
+#define UI_HUD_SEP    (g_ui.hud_sep)
+#define UI_TITLE_Y    (g_ui.title_y)
+#define UI_TITLE_RULE (g_ui.title_rule)
+#define UI_BODY_Y0    (g_ui.body_y0)
+#define UI_ROW_H      (g_ui.row_h)
+#define UI_ICON_Y     (g_ui.icon_y)
+#define UI_ICON_LABEL (g_ui.icon_label)
+#define UI_FOOTER_SEP (g_ui.footer_sep)
+#define UI_FOOTER_DOT (g_ui.footer_dot)
+#define UI_FOOTER_Y   (g_ui.footer_y)
 
 static int uiOfs(DisplayDriver& d) { return d.isEink() ? UI_TXT_OFS : 0; }
 
@@ -116,8 +137,8 @@ static void uiRow(DisplayDriver& d, int y, const char* label, const char* value)
 
 static void uiBattery(DisplayDriver& d, uint16_t mv, bool charging) {
   int pct = uiBatteryPercent(mv);
-  int bw = 22, bh = 11;
-  int bx = d.width() - bw - 3, by = 3;
+  int bw = 22, bh = g_ui.compact ? 9 : 11;
+  int bx = d.width() - bw - 3, by = g_ui.compact ? 0 : 3;
   d.setColor(DisplayDriver::LIGHT);
   d.drawRect(bx, by, bw, bh);
   d.fillRect(bx + bw, by + 3, 2, bh - 6);
@@ -197,6 +218,26 @@ public:
     int W = display.width();
 
     // meshcore logo
+    float pf = (float)(millis() - _start) / (float)BOOT_SCREEN_MILLIS;
+    if (pf < 0) pf = 0;
+    if (pf > 1) pf = 1;
+
+    if (g_ui.compact) {
+      display.setColor(DisplayDriver::BLUE);
+      display.drawXbm((W - 128) / 2, 4, meshcore_logo, 128, 13);
+
+      display.setColor(DisplayDriver::LIGHT);
+      display.setTextSize(1);
+      uiTextCentered(display, W / 2, 22, "COMPANION");
+      uiTextCentered(display, W / 2, 34, _version_info);
+      uiTextCentered(display, W / 2, 44, FIRMWARE_BUILD_DATE);
+
+      int bx = 28, bw = W - 56;
+      display.drawRect(bx, 55, bw, 7);
+      display.fillRect(bx + 2, 57, (int)((bw - 4) * pf), 3);
+      return 400;
+    }
+
     display.setColor(DisplayDriver::BLUE);
     display.drawXbm((W - 128) / 2, 30, meshcore_logo, 128, 13);
 
@@ -211,9 +252,6 @@ public:
 
     int bx = 28, bw = W - 56;
     display.drawRect(bx, 110, bw, 7);
-    float pf = (float)(millis() - _start) / (float)BOOT_SCREEN_MILLIS;
-    if (pf < 0) pf = 0;
-    if (pf > 1) pf = 1;
     display.fillRect(bx + 2, 112, (int)((bw - 4) * pf), 3);
 
     return 400;
@@ -267,7 +305,7 @@ class HomeScreen : public UIScreen {
 
   void drawFooter(DisplayDriver& d, const char* hint) {
     d.setColor(DisplayDriver::LIGHT);
-    d.fillRect(0, UI_FOOTER_SEP, d.width(), 1);
+    if (!g_ui.compact) d.fillRect(0, UI_FOOTER_SEP, d.width(), 1);
     int n = HomePage::Count;
     int spacing = 7, x = UI_MARGIN;
     for (int i = 0; i < n; i++, x += spacing) {
@@ -277,7 +315,7 @@ class HomeScreen : public UIScreen {
         d.fillRect(x, UI_FOOTER_DOT, 2, 2);
       }
     }
-    if (hint && hint[0]) {
+    if (hint && hint[0] && !g_ui.compact) {
       d.setTextSize(1);
       uiTextRight(d, d.width() - UI_MARGIN, UI_FOOTER_Y, hint);
     }
@@ -327,7 +365,7 @@ public:
     if (_page == HomePage::SHUTDOWN && _shutdown_init) {
       display.setColor(DisplayDriver::LIGHT);
       display.setTextSize(2);
-      uiTextCentered(display, W / 2, 70, "Hibernating");
+      uiTextCentered(display, W / 2, g_ui.compact ? 24 : 70, "Hibernating");
       return 60000;
     }
 
@@ -655,15 +693,22 @@ public:
     char filtered_origin[sizeof(p->origin)];
     display.translateUTF8ToBlocks(filtered_origin, p->origin, sizeof(filtered_origin));
     display.setColor(DisplayDriver::LIGHT);
-    uiTextEllip(display, UI_MARGIN, 38, W - tw - UI_MARGIN - 6, filtered_origin);
-    uiTextRight(display, W - UI_MARGIN, 38, tmp);
+    int origin_y = g_ui.compact ? 14 : 38;
+    int msg_y = g_ui.compact ? 24 : 58;
+    int msg_lines = g_ui.compact ? 3 : 4;
+    uiTextEllip(display, UI_MARGIN, origin_y, W - tw - UI_MARGIN - 6, filtered_origin);
+    uiTextRight(display, W - UI_MARGIN, origin_y, tmp);
 
     char filtered_msg[sizeof(p->msg)];
     display.translateUTF8ToBlocks(filtered_msg, p->msg, sizeof(filtered_msg));
-    uiWrapText(display, UI_MARGIN, 58, W - UI_MARGIN * 2, UI_ROW_H, 4, filtered_msg);
+    uiWrapText(display, UI_MARGIN, msg_y, W - UI_MARGIN * 2, UI_ROW_H, msg_lines, filtered_msg);
 
-    display.fillRect(0, UI_FOOTER_SEP, W, 1);
-    uiTextCentered(display, W / 2, UI_FOOTER_Y, "hold = clear all");
+    if (g_ui.compact) {
+      uiTextCentered(display, W / 2, 55, "hold = clear all");
+    } else {
+      display.fillRect(0, UI_FOOTER_SEP, W, 1);
+      uiTextCentered(display, W / 2, UI_FOOTER_Y, "hold = clear all");
+    }
 
 #if AUTO_OFF_MILLIS==0 // probably e-ink
     return 10000; // 10 s
@@ -737,7 +782,11 @@ public:
     int y = UI_BODY_Y0;
     for (int i = 0; i < _count; i++) {
       if (i == _sel) {
-        uiFillRoundRect(d, 2, y - 12, W - 4, 16, DisplayDriver::LIGHT);
+        if (g_ui.compact) {
+          uiFillRoundRect(d, 2, y - 1, W - 4, UI_ROW_H, DisplayDriver::LIGHT);
+        } else {
+          uiFillRoundRect(d, 2, y - 12, W - 4, 16, DisplayDriver::LIGHT);
+        }
         d.setColor(DisplayDriver::DARK);
       } else {
         d.setColor(DisplayDriver::LIGHT);
@@ -748,17 +797,21 @@ public:
     }
 
     d.setColor(DisplayDriver::LIGHT);
-    d.fillRect(0, UI_FOOTER_SEP, W, 1);
-    uiTextRight(d, W - UI_MARGIN, UI_FOOTER_Y, "click=move hold=ok");
+    if (g_ui.compact) {
+      uiTextRight(d, W - UI_MARGIN, 55, "click=move hold=ok");
+    } else {
+      d.fillRect(0, UI_FOOTER_SEP, W, 1);
+      uiTextRight(d, W - UI_MARGIN, UI_FOOTER_Y, "click=move hold=ok");
+    }
     return 10000;
   }
 
   bool handleInput(char c) override {
-    if (c == KEY_NEXT || c == KEY_RIGHT) {
+    if (c == KEY_DOWN || c == KEY_NEXT) {
       _sel = (_sel + 1) % _count;
       return true;
     }
-    if (c == KEY_PREV || c == KEY_LEFT) {
+    if (c == KEY_UP || c == KEY_PREV) {
       _sel = (_sel + _count - 1) % _count;
       return true;
     }
@@ -770,7 +823,7 @@ public:
       }
       return true;
     }
-    if (c == KEY_SELECT) {
+    if (c == KEY_LEFT || c == KEY_SELECT) {
       _task->gotoHomeScreen();
       return true;
     }
@@ -863,15 +916,21 @@ void UITask::drawHibernation() {
   d.setColor(DisplayDriver::LIGHT);
   uiTextRight(d, W - 28, UI_HUD_TEXT, buf);
 
+  int logo_y = g_ui.compact ? 4 : 46;
+  int asleep_y = g_ui.compact ? 20 : 76;
+  int gps_y = g_ui.compact ? 32 : 92;
+  int lowbatt_y = g_ui.compact ? 44 : 104;
+  int wake_y = g_ui.compact ? 54 : 116;
+
   d.setColor(DisplayDriver::BLUE);
-  d.drawXbm((W - 128) / 2, 46, meshcore_logo, 128, 13);
+  d.drawXbm((W - 128) / 2, logo_y, meshcore_logo, 128, 13);
 
   d.setColor(DisplayDriver::LIGHT);
   d.setTextSize(1);
   uint32_t t = rtc_clock.getCurrentTime();
   int hh = (t / 3600) % 24, mm = (t / 60) % 60;
   snprintf(buf, sizeof(buf), "Asleep at %02d:%02d UTC", hh, mm);
-  uiTextCentered(d, W / 2, 76, buf);
+  uiTextCentered(d, W / 2, asleep_y, buf);
 
   if (getGPSState()) {
     if (sensors.node_lat != 0 || sensors.node_lon != 0) {
@@ -879,22 +938,24 @@ void UITask::drawHibernation() {
     } else {
       strcpy(buf, "location unknown");
     }
-    uiTextCentered(d, W / 2, 92, buf);
+    uiTextCentered(d, W / 2, gps_y, buf);
   }
 
   if (_low_batt_shutdown) {
     d.setColor(DisplayDriver::RED);
-    uiTextCentered(d, W / 2, 104, "Battery was almost empty");
+    uiTextCentered(d, W / 2, lowbatt_y, "Battery was almost empty");
     d.setColor(DisplayDriver::LIGHT);
   }
 
-  uiTextCentered(d, W / 2, 116, "press button to wake");
+  uiTextCentered(d, W / 2, wake_y, "press button to wake");
   d.endFrame();
 }
 
 void UITask::begin(DisplayDriver* display, SensorManager* sensors, NodePrefs* node_prefs) {
   _display = display;
   _sensors = sensors;
+
+  g_ui = (display != NULL && display->height() < 100) ? UI_COMPACT : UI_TALL;
   _auto_off = millis() + AUTO_OFF_MILLIS;
 
 #if defined(PIN_USER_BTN)
@@ -1086,6 +1147,20 @@ void UITask::loop() {
   } else if (ev == BUTTON_EVENT_LONG_PRESS) {
     c = handleLongPress(KEY_RIGHT);
   }
+#if defined(JOYSTICK_UP) && defined(JOYSTICK_DOWN)
+  ev = joystick_up.check();
+  if (ev == BUTTON_EVENT_CLICK) {
+    c = checkDisplayOn(KEY_UP);
+  } else if (ev == BUTTON_EVENT_LONG_PRESS) {
+    c = handleLongPress(KEY_UP);
+  }
+  ev = joystick_down.check();
+  if (ev == BUTTON_EVENT_CLICK) {
+    c = checkDisplayOn(KEY_DOWN);
+  } else if (ev == BUTTON_EVENT_LONG_PRESS) {
+    c = handleLongPress(KEY_DOWN);
+  }
+#endif
   ev = back_btn.check();
   if (ev == BUTTON_EVENT_TRIPLE_CLICK) {
     c = handleTripleClick(KEY_SELECT);
@@ -1194,11 +1269,11 @@ void UITask::loop() {
           _display->startFrame();
           _display->setColor(DisplayDriver::RED);
           _display->setTextSize(2);
-          uiTextCentered(*_display, W / 2, 56, "LOW");
-          uiTextCentered(*_display, W / 2, 82, "BATTERY");
+          uiTextCentered(*_display, W / 2, g_ui.compact ? 8 : 56, "LOW");
+          uiTextCentered(*_display, W / 2, g_ui.compact ? 26 : 82, "BATTERY");
           _display->setColor(DisplayDriver::LIGHT);  // draw box border
           _display->setTextSize(1);
-          uiTextCentered(*_display, W / 2, 104, "shutting down");
+          uiTextCentered(*_display, W / 2, g_ui.compact ? 48 : 104, "shutting down");
           _display->endFrame();
           if (_display->isEink() == false) { delay(3000); }
         }
