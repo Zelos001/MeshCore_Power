@@ -59,6 +59,15 @@ public:
    */
   uint8_t *calculatePacketHash() const;
 
+  /**
+   * \brief Check if this received packet is a downstream forwarding of the
+   *        supplied outbound packet, so that a pending retransmit can be cancelled.
+   *        For TRACE packets the payload and SNR path prefix are compared,
+   *        because TRACE changes path_len (and thus its hash) at every hop.
+   *        For all other types the cached packet hash is compared.
+   */
+  bool isRetryMatch(const Packet* outbound) const;
+
   const char* getHashHex() const;
 
   /**

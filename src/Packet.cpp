@@ -64,6 +64,32 @@ const char* Packet::getHashHex() const {
   return hash_hex;
 }
 
+bool Packet::isRetryMatch(const Packet* outbound) const {
+  // Only packets of the same payload type can be retries of each other.
+  if (this->getPayloadType() != outbound->getPayloadType()) return false;
+
+  // TRACE packets append an SNR byte to path[] and increment path_len per hop.
+  // A forwarded TRACE therefore has the same payload and a longer path with the
+  // previous hop's path as a prefix. Accept any downstream hop, not just the
+  // immediate next hop, so retries are canceled as soon as we overhear a later
+  // forward of the same TRACE.
+  if (this->getPayloadType() == PAYLOAD_TYPE_TRACE) {
+    if (this->payload_len != outbound->payload_len) return false;
+    if (memcmp(this->payload, outbound->payload, this->payload_len) != 0) return false;
+    if (this->path_len <= outbound->path_len) return false;
+    if (outbound->path_len > 0 &&
+        memcmp(this->path, outbound->path, outbound->path_len) != 0) {
+      return false;
+    }
+    return true;
+  }
+
+  // Default behaviour for all other payload types: compare cached hashes.
+  const uint8_t* h1 = this->calculatePacketHash();
+  const uint8_t* h2 = outbound->calculatePacketHash();
+  return memcmp(h1, h2, MAX_HASH_SIZE) == 0;
+}
+
 uint8_t Packet::writeTo(uint8_t dest[]) const {
   uint8_t i = 0;
   dest[i++] = header;

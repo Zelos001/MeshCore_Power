@@ -74,20 +74,21 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
 
   if (pkt->isRouteDirect()) {
     const bool is_next_hop = (pkt->getPathHashCount() > 0) && self_id.isHashMatch(pkt->path, pkt->getPathHashSize());
-    // Check if this is a retransmit of a packet we recently sent;
-    // if yes, the next hop successfully forwarded it, so remove our scheduled retransmit from outbound queue.
-    // This runs for ANY path_len (including 0 = downstream relay forwarding to final destination),
-    // so that we cancel pending retries as soon as we overhear a relay forwarding our packet.
 
     // Only do this when the packet is NOT addressed to us as next hop to avoid dropping fresh packets.
     if (!is_next_hop) {
-      pkt->calculatePacketHash();
-      const uint8_t *recv_hash = pkt->hash;
+      // Check if this is a retransmit of a packet we recently sent;
+      // if yes, the next hop successfully forwarded it, so remove our scheduled retransmit from outbound queue.
+      // This runs for ANY path_len (including 0 = downstream relay forwarding to final destination),
+      // so that we cancel pending retries as soon as we overhear a relay forwarding our packet.
+      //
+      // For TRACE packets we cannot use the packet hash, because TRACE appends SNR bytes
+      // and increments path_len per hop, which changes the hash. Packet::isRetryMatch()
+      // handles this by comparing payload and SNR prefix for TRACE, and hash for all others.
 
       // First check the current outbound packet being prepared/sent
       if (outbound && outbound->sending_attempts > 0 && outbound->isRouteDirect()) {
-        const uint8_t *outbound_hash = outbound->calculatePacketHash();
-        if (memcmp(recv_hash, outbound_hash, MAX_HASH_SIZE) == 0) {
+        if (pkt->isRetryMatch(outbound)) {
           MESH_DEBUG_PRINTLN(
               "%s Mesh::onRecvPacket(): downstream forwarded current outbound, canceling (attempt=%d)",
               getLogDateTime(), outbound->sending_attempts);
@@ -101,8 +102,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         for (int i = _mgr->getOutboundTotal() - 1; i >= 0; i--) {
           Packet *queued_pkt = _mgr->getOutboundByIdx(i);
           if (queued_pkt && queued_pkt->sending_attempts > 0 && queued_pkt->isRouteDirect()) {
-            const uint8_t *queued_hash = queued_pkt->calculatePacketHash();
-            if (memcmp(recv_hash, queued_hash, MAX_HASH_SIZE) == 0) {
+            if (pkt->isRetryMatch(queued_pkt)) {
               MESH_DEBUG_PRINTLN("%s Mesh::onRecvPacket(): downstream forwarded packet detected, canceling "
                                  "retransmit (attempt=%d)",
                                  getLogDateTime(), queued_pkt->sending_attempts);
