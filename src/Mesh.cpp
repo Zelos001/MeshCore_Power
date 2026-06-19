@@ -57,6 +57,14 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
         // append SNR (Not hash!)
         pkt->path[pkt->path_len++] = (int8_t) (pkt->getSNR()*4);
 
+        // Last forwarding hop before the TRACE destination: the destination does not forward,
+        // so a retry could never be cancelled by overhearing a downstream forward. To avoid
+        // flooding the destination, exhaust the retry budget now (no retransmissions from
+        // this hop). Higher layers or the sender must retry the entire TRACE if needed.
+        if (offset + (1 << path_sz) >= len) {
+          pkt->sending_attempts = getMaxResendAttempts();
+        }
+
         uint32_t d = getDirectRetransmitDelay(pkt);
         return ACTION_RETRANSMIT_DELAYED(5, d);  // schedule with priority 5 (for now), maybe make configurable?
       }
