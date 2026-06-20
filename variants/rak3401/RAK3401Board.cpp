@@ -4,15 +4,26 @@
 #include "RAK3401Board.h"
 
 #ifdef NRF52_POWER_MANAGEMENT
-#ifdef PIN_USER_BTN_ANA
-// LPCOMP wake config for the AIN user button. Defaults assume PIN_USER_BTN_ANA
-// is pin 31 (P0.31 = AIN7); override via build flags if the button moves.
-#ifndef PWRMGT_BTN_LPCOMP_AIN
-  #define PWRMGT_BTN_LPCOMP_AIN 7
+
+// Analog (LPCOMP) wake source for SYSTEMOFF. Precedence: an explicit
+// PIN_WAKEUP_ANA wins, else the AIN user button. Lets a build point the wake at
+// a different AIN pin than the button (e.g. an INT line wired to that pin)
+// without touching the button define. The pin must idle near VDD and pull low
+// on activity, and must be analog-capable: nRF52840 AIN map is
+// P0.02-05 = AIN0-3, P0.28-31 = AIN4-7.
+#if defined(PIN_WAKEUP_ANA)
+  #define PWRMGT_WAKE_PIN  PIN_WAKEUP_ANA
+#elif defined(PIN_USER_BTN_ANA)
+  #define PWRMGT_WAKE_PIN  PIN_USER_BTN_ANA
 #endif
-#ifndef PWRMGT_BTN_LPCOMP_REFSEL
-  #define PWRMGT_BTN_LPCOMP_REFSEL 3   // 4/8 VDD (~1.65V at 3.3V) threshold
-#endif
+
+#if defined(PWRMGT_WAKE_PIN)
+  #ifndef PWRMGT_WAKE_AIN
+    #define PWRMGT_WAKE_AIN  ((PWRMGT_WAKE_PIN) >= 28 ? (PWRMGT_WAKE_PIN) - 24 : (PWRMGT_WAKE_PIN) - 2)
+  #endif
+  #ifndef PWRMGT_WAKE_REFSEL
+    #define PWRMGT_WAKE_REFSEL  3   // 4/8 VDD (~1.65V at 3.3V) threshold
+  #endif
 #endif
 
 // Static configuration for power management
@@ -35,10 +46,11 @@ void RAK3401Board::initiateShutdown(uint8_t reason) {
     configureVoltageWake(power_config.lpcomp_ain_channel, power_config.lpcomp_refsel);
   }
 
-#ifdef PIN_USER_BTN_ANA
-  // Wake-from-SYSTEMOFF on the AIN user button (P0.31 = AIN7).
+#if defined(PWRMGT_WAKE_PIN)
+  // Wake-from-SYSTEMOFF on the analog wake pin (P0.31 = AIN7 by default): the AIN
+  // user button, or whatever PIN_WAKEUP_ANA points at.
   //
-  // This pin is wired as an *analog* button (see MomentaryButton in target.cpp:
+  // The button is wired as an *analog* button (see MomentaryButton in target.cpp:
   // pressed == analogRead() < threshold). GPIO SENSE can't be used as the wake
   // source: using the pin as an analog/SAADC input leaves its digital input
   // buffer disconnected, so NRF_GPIO->IN reads 0 regardless of the real ~VDD
@@ -54,18 +66,20 @@ void RAK3401Board::initiateShutdown(uint8_t reason) {
   //
   // Wait for release first so LPCOMP is armed while the level is above the
   // threshold — otherwise the initial press generates no new downward crossing.
-  // Bounded by a timeout so a stuck/low reading can never wedge shutdown.
+  // Bounded by a timeout so a stuck/low reading can never wedge shutdown. (A pin
+  // driven by an idle-high INT line should be drained to idle by the caller
+  // before shutdown, since this level wait can't observe its release.)
   analogReadResolution(12);  // as getBattMilliVolts() does; makes the threshold below unambiguous
-  const int BTN_RELEASED_ADC = 2048;  // mid-scale at 12-bit: above the ~1/2 VDD LPCOMP threshold
+  const int WAKE_RELEASED_ADC = 2048;  // mid-scale at 12-bit: above the ~1/2 VDD LPCOMP threshold
   uint32_t t0 = millis();
   int released_streak = 0;
   while (released_streak < 5 && (millis() - t0) < 5000) {
-    if (analogRead(PIN_USER_BTN_ANA) > BTN_RELEASED_ADC) released_streak++;
+    if (analogRead(PWRMGT_WAKE_PIN) > WAKE_RELEASED_ADC) released_streak++;
     else released_streak = 0;
     delay(10);
   }
 
-  configureVoltageWake(PWRMGT_BTN_LPCOMP_AIN, PWRMGT_BTN_LPCOMP_REFSEL, /*detect_down=*/true);
+  configureVoltageWake(PWRMGT_WAKE_AIN, PWRMGT_WAKE_REFSEL, /*detect_down=*/true);
 #endif
 
   enterSystemOff(reason);
