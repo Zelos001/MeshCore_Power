@@ -182,7 +182,7 @@ bool RadioLibWrapper::isSendComplete() {
 void RadioLibWrapper::onSendFinished() {
   _radio->finishTransmit();
   _board->onAfterTransmit();
-  if (isJapanMode()) {
+  if (isAS923_1_JP()) {
     delay(50);  // ARIB STD-T108 §3.4.1: >= 50ms between transmissions
   }
   state = STATE_IDLE;
@@ -193,7 +193,7 @@ int16_t RadioLibWrapper::performChannelScan() {
 }
 
 bool RadioLibWrapper::isChannelActive() {
-  if (isJapanMode()) {
+  if (isAS923_1_JP()) {
     // ARIB STD-T108: 5ms continuous RSSI sensing, -80dBm absolute threshold
     uint32_t sense_start = millis();
     while (millis() - sense_start < 5) {
