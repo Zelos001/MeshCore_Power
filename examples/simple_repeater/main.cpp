@@ -87,6 +87,7 @@ void setup() {
 
   command[0] = 0;
 
+  sensors.setFileSystem(fs);
   sensors.begin();
 
   the_mesh.begin(fs);
