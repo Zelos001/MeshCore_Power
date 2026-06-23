@@ -56,12 +56,13 @@ public:
 
   static void formatMacCadStats(char* reply, const mesh::MacStats& stats) {
     sprintf(reply,
-      "{\"busy\":%u,\"timeouts\":%u,\"forced_tx\":%u,\"deferred_tx\":%u,\"dropped_tx\":%u}",
+      "{\"busy\":%u,\"timeouts\":%u,\"forced_tx\":%u,\"deferred_tx\":%u,\"dropped_tx\":%u,\"expired_tx\":%u}",
       stats.cad_busy,
       stats.cad_timeout,
       stats.cad_forced_tx,
       stats.cad_deferred_tx,
-      stats.cad_dropped_tx
+      stats.cad_dropped_tx,
+      stats.cad_expired_tx
     );
   }
 

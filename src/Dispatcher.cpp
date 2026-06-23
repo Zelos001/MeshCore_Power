@@ -20,6 +20,9 @@ void Dispatcher::begin() {
   n_sent_flood = n_sent_direct = 0;
   n_recv_flood = n_recv_direct = 0;
   memset(&mac_stats, 0, sizeof(mac_stats));
+  cad_defer_packet = NULL;
+  cad_defer_start = 0;
+  cad_defer_timeouts = 0;
   _err_flags = 0;
   radio_nonrx_start = _ms->getMillis();
 
@@ -298,6 +301,11 @@ void Dispatcher::checkSend() {
   if (!millisHasNowPassed(next_tx_time)) return;
   if (_radio->isReceiving()) {
     Packet* pending = _mgr->peekNextOutbound(_ms->getMillis());
+    if (pending != cad_defer_packet) {
+      cad_defer_packet = pending;
+      cad_defer_start = pending ? _ms->getMillis() : 0;
+      cad_defer_timeouts = 0;
+    }
     if (cad_busy_start == 0) {
       cad_busy_start = _ms->getMillis();   // record when CAD busy state started
     }
@@ -316,6 +324,9 @@ void Dispatcher::checkSend() {
         if (dropped) {
           releasePacket(dropped);
         }
+        cad_defer_packet = NULL;
+        cad_defer_start = 0;
+        cad_defer_timeouts = 0;
         cad_busy_start = 0;
         next_tx_time = futureMillis(getCADFailRetryDelay());
         return;
@@ -325,6 +336,26 @@ void Dispatcher::checkSend() {
         // Explicit fail-open mode: transmit below even though local CAD still reports busy.
       } else {
         uint32_t retry_delay = getCADFailRetryDelay();
+        cad_defer_timeouts++;
+        uint32_t max_deferral_ms = getCADMaxDeferralMs();
+        uint8_t max_timeouts = getCADMaxTimeouts();
+        bool age_expired = max_deferral_ms > 0 && cad_defer_start > 0 && _ms->getMillis() - cad_defer_start >= max_deferral_ms;
+        bool count_expired = max_timeouts > 0 && cad_defer_timeouts >= max_timeouts;
+        if (age_expired || count_expired) {
+          Packet* expired = _mgr->getNextOutbound(_ms->getMillis());
+          mac_stats.cad_dropped_tx++;
+          mac_stats.cad_expired_tx++;
+          logMacEvent("cad_expire", expired, expired ? expired->getRawLength() : 0, 0, retry_delay, 0, busy_duration);
+          if (expired) {
+            releasePacket(expired);
+          }
+          cad_defer_packet = NULL;
+          cad_defer_start = 0;
+          cad_defer_timeouts = 0;
+          cad_busy_start = 0;
+          next_tx_time = futureMillis(retry_delay);
+          return;
+        }
         mac_stats.cad_deferred_tx++;
         logMacEvent("cad_defer", pending, pending ? pending->getRawLength() : 0, 0, retry_delay, 0, busy_duration);
         cad_busy_start = 0;
@@ -343,6 +374,11 @@ void Dispatcher::checkSend() {
 
   outbound = _mgr->getNextOutbound(_ms->getMillis());
   if (outbound) {
+    if (outbound == cad_defer_packet) {
+      cad_defer_packet = NULL;
+      cad_defer_start = 0;
+      cad_defer_timeouts = 0;
+    }
     int len = 0;
     uint8_t raw[MAX_TRANS_UNIT];
 
