@@ -919,6 +919,7 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.flood_max_unscoped = 64;
   _prefs.flood_max_advert = 8;
   _prefs.interference_threshold = 0; // disabled
+  _prefs.cad_timeout_policy = CAD_TIMEOUT_DEFER;
 
   // bridge defaults
   _prefs.bridge_enabled = 1;    // enabled

@@ -305,12 +305,32 @@ void Dispatcher::checkSend() {
     if (_ms->getMillis() - cad_busy_start > getCADFailMaxDuration()) {
       _err_flags |= ERR_EVENT_CAD_TIMEOUT;
       mac_stats.cad_timeout++;
-      mac_stats.cad_forced_tx++;
-      logMacEvent("cad_timeout", pending, pending ? pending->getRawLength() : 0, 0, 0, 0, _ms->getMillis() - cad_busy_start);
 
       MESH_DEBUG_PRINTLN("%s Dispatcher::checkSend(): CAD busy max duration reached!", getLogDateTime());
-      // channel activity has gone on too long... (Radio might be in a bad state)
-      // force the pending transmit below...
+      uint32_t busy_duration = _ms->getMillis() - cad_busy_start;
+      uint8_t policy = getCADTimeoutPolicy();
+      if (policy == CAD_TIMEOUT_POLICY_DROP) {
+        Packet* dropped = _mgr->getNextOutbound(_ms->getMillis());
+        mac_stats.cad_dropped_tx++;
+        logMacEvent("cad_drop", dropped, dropped ? dropped->getRawLength() : 0, 0, 0, 0, busy_duration);
+        if (dropped) {
+          releasePacket(dropped);
+        }
+        cad_busy_start = 0;
+        next_tx_time = futureMillis(getCADFailRetryDelay());
+        return;
+      } else if (policy == CAD_TIMEOUT_POLICY_FORCE) {
+        mac_stats.cad_forced_tx++;
+        logMacEvent("cad_force", pending, pending ? pending->getRawLength() : 0, 0, 0, 0, busy_duration);
+        // Explicit fail-open mode: transmit below even though local CAD still reports busy.
+      } else {
+        uint32_t retry_delay = getCADFailRetryDelay();
+        mac_stats.cad_deferred_tx++;
+        logMacEvent("cad_defer", pending, pending ? pending->getRawLength() : 0, 0, retry_delay, 0, busy_duration);
+        cad_busy_start = 0;
+        next_tx_time = futureMillis(retry_delay);
+        return;
+      }
     } else {
       uint32_t retry_delay = getCADFailRetryDelay();
       mac_stats.cad_busy++;

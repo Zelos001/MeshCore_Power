@@ -166,6 +166,8 @@ Returns JSON with:
 - `busy`: local radio/CAD busy deferrals before the timeout threshold
 - `timeouts`: times local CAD busy state exceeded the maximum busy duration
 - `forced_tx`: CAD timeout events that force-transmitted because fail-open mode was selected
+- `deferred_tx`: CAD timeout events that deferred and retried later
+- `dropped_tx`: packets dropped after CAD timeout policy
 
 ---
 
@@ -538,6 +540,20 @@ Returns JSON with:
 **Default:** `0.2`
 
 **Note:** Same collision-avoidance random window as `txdelay`, but applied to direct (non-flood, routed) traffic. The default is lower because direct packets are addressed to a specific next hop, so far fewer nodes compete to retransmit them.
+
+---
+
+#### View or change CAD timeout policy
+**Usage:**
+- `get cad.timeout.policy`
+- `set cad.timeout.policy <policy>`
+
+**Parameters:**
+- `policy`: `defer`, `drop`, or `force`
+
+**Default:** `defer`
+
+**Note:** CAD means Channel Activity Detection. When the radio reports the channel busy for longer than the CAD timeout, `defer` keeps the queued packet and retries later, `drop` removes the next due packet, and `force` preserves the older fail-open behaviour of transmitting anyway. `force` should only be used for diagnostics or radio-state fallback because it can worsen congestion.
 
 ---
 

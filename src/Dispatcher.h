@@ -110,10 +110,16 @@ typedef uint32_t  DispatcherAction;
 #define ERR_EVENT_CAD_TIMEOUT       (1 << 1)
 #define ERR_EVENT_STARTRX_TIMEOUT   (1 << 2)
 
+#define CAD_TIMEOUT_POLICY_DEFER    0
+#define CAD_TIMEOUT_POLICY_DROP     1
+#define CAD_TIMEOUT_POLICY_FORCE    2
+
 struct MacStats {
   uint32_t cad_busy;
   uint32_t cad_timeout;
   uint32_t cad_forced_tx;
+  uint32_t cad_deferred_tx;
+  uint32_t cad_dropped_tx;
   uint32_t tx_start;
   uint32_t tx_done;
   uint32_t tx_start_fail;
@@ -183,6 +189,7 @@ protected:
   virtual int calcRxDelay(float score, uint32_t air_time) const;
   virtual uint32_t getCADFailRetryDelay() const;
   virtual uint32_t getCADFailMaxDuration() const;
+  virtual uint8_t getCADTimeoutPolicy() const { return CAD_TIMEOUT_POLICY_DEFER; }
   virtual int getInterferenceThreshold() const { return 0; }    // disabled by default
   virtual int getAGCResetInterval() const { return 0; }    // disabled by default
   virtual unsigned long getDutyCycleWindowMs() const { return 3600000; }
