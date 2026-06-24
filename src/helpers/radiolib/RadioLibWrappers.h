@@ -19,6 +19,7 @@ protected:
   uint16_t _floor_rejected_high_bound;
   uint8_t _preamble_sf;
 
+  void resetNoiseFloorSamples();
   void resetNoiseFloorBatch();
   void idle();
   void startRecv();
@@ -64,17 +65,8 @@ public:
   static uint16_t preambleLengthForSF(uint8_t sf) { return sf <= 8 ? 32 : 16; }
   void updatePreamble(uint8_t sf) { _preamble_sf = sf; _radio->setPreambleLength(preambleLengthForSF(sf)); }
 
-  int getNoiseFloor() const override { return _noise_floor; }
-  mesh::NoiseFloorStats getNoiseFloorStats() const override {
-    return {
-      _num_floor_samples,
-      _floor_sample_min,
-      _floor_sample_median,
-      _floor_sample_max,
-      _floor_rejected_low_bound,
-      _floor_rejected_high_bound
-    };
-  }
+  int getNoiseFloor() const override;
+  mesh::NoiseFloorStats getNoiseFloorStats() const override;
   void triggerNoiseFloorCalibrate(int threshold) override;
   void resetAGC() override;
 
