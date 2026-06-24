@@ -8,16 +8,7 @@ class CustomLR2021 : public LR2021 {
 
   public:
     CustomLR2021(Module *mod) : LR2021(mod) {
-      irqDioNum = 9;
-    }
-
-    size_t getPacketLength(bool update) override {
-      size_t len = LR2021::getPacketLength(update);
-      if (len == 0 && getIrqStatus() & RADIOLIB_LR11X0_IRQ_HEADER_ERR) {
-        MESH_DEBUG_PRINTLN("LR2021: got header err, calling standby()");
-        standby();
-      }
-      return len;
+      irqDioNum = LR2021_IRQ_DIO;
     }
 
     float getFreqMHz() const { return freqMHz; }
@@ -33,8 +24,14 @@ class CustomLR2021 : public LR2021 {
 
     bool isReceiving() {
       uint32_t irq = getIrqStatus();
+      // Use LR2021-specific IRQ flags if available, fall back to LR11x0
+#ifdef RADIOLIB_LR2021_IRQ_PREAMBLE_DETECTED
+      bool detected = (irq & RADIOLIB_LR2021_IRQ_LORA_HEADER_VALID) ||
+                      (irq & RADIOLIB_LR2021_IRQ_PREAMBLE_DETECTED);
+#else
       bool detected = (irq & RADIOLIB_LR11X0_IRQ_SYNC_WORD_HEADER_VALID) ||
                       (irq & RADIOLIB_LR11X0_IRQ_PREAMBLE_DETECTED);
+#endif
       return detected;
     }
 
