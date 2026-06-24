@@ -223,18 +223,28 @@ public:
       return;   // no response this tick — keep last reported values
     }
 
-    // Require BOTH gnssFixOK (DOP/accuracy mask passed) AND fixType==3 (3D fix).
-    // Ublox reports gnssFixOK=true with bogus coords during cold start (e.g. an
-    // unfixed module on first boot reporting coordinates from factory almanac);
-    // requiring fixType==3 filters those out.
+    // Show the position EAGERLY: as soon as there's a real 2D/3D solution (SIV>0,
+    // fixType>=2) with valid coords, display it -- don't wait for gnssFixOk, which can
+    // take up to ~30 s to assert. Coords must be present (0/0 is the "no data" value) and
+    // in range: the module emits 0/0 and ~999deg junk while cold/re-tracking, so rejecting
+    // those keeps _lat/_lng at 0 (-> "---"). Telemetry is stricter: _fix (= isValid()) only
+    // goes true once gnssFixOk passes on a full 3D fix, and node_lat is gated on isValid()
+    // -- so the screen can show a settling fix while we withhold a loose one from the mesh.
     _sats = ublox_GNSS.getSIV();           // valid without a fix -- shows acquisition progress
-    _fixType = ublox_GNSS.getFixType();    // 0/1=none, 2=2D, 3=3D -- for the UI
-    if (ublox_GNSS.getGnssFixOk() && _fixType == 3) {
-      _fix = true;
-      _lat = ublox_GNSS.getLatitude() / 10;
-      _lng = ublox_GNSS.getLongitude() / 10;
+    long lat = ublox_GNSS.getLatitude() / 10;
+    long lng = ublox_GNSS.getLongitude() / 10;
+    uint8_t ft = (_sats > 0) ? ublox_GNSS.getFixType() : 0;
+    bool coords_ok = (lat != 0 || lng != 0) &&
+                     lat >= -90000000  && lat <= 90000000 &&     // +/-90 deg  (1e6 scale)
+                     lng >= -180000000 && lng <= 180000000;      // +/-180 deg
+    if (ft >= 2 && coords_ok) {
+      _fixType = ft;                        // 2 or 3 -- shown on screen with the coords
+      _lat = lat;
+      _lng = lng;
       _alt = ublox_GNSS.getAltitudeMSL();   // height above mean sea level, not ellipsoid
+      _fix = (ft == 3 && ublox_GNSS.getGnssFixOk());   // isValid()/telemetry: accuracy-OK 3D only
     } else {
+      _fixType = 0;                         // no usable fix -> "no fix" + held/--- position
       _fix = false;
     }
     _epoch = ublox_GNSS.getUnixEpoch();
