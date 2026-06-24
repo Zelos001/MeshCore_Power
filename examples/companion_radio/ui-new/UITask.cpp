@@ -310,7 +310,13 @@ public:
         y = y + 12;
         display.drawTextLeftAlign(0, y, "Can't access GPS");
       } else {
-        strcpy(buf, nmea->isValid()?"fix":"no fix");
+        if (!gps_state) {
+          strcpy(buf, "off");
+        } else switch (nmea->getFixType()) {
+          case 3:  strcpy(buf, "3D"); break;
+          case 2:  strcpy(buf, "2D"); break;
+          default: strcpy(buf, "no fix"); break;
+        }
         display.drawTextRightAlign(display.width()-1, y, buf);
         y = y + 12;
         display.drawTextLeftAlign(0, y, "sat");

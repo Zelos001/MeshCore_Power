@@ -183,6 +183,7 @@ class RAK12500LocationProvider : public LocationProvider {
   int _sats = 0;
   long _epoch = 0;
   bool _fix = false;
+  uint8_t _fixType = 0;
   unsigned long _next_poll = 0;
 public:
   long getLatitude() override { return _lat; }
@@ -190,6 +191,7 @@ public:
   long getAltitude() override { return _alt; }
   long satellitesCount() override { return _sats; }
   bool isValid() override { return _fix; }
+  uint8_t getFixType() override { return _fixType; }
   long getTimestamp() override { return _epoch; }
   void sendSentence(const char * sentence) override { }
   void reset() override { }
@@ -225,12 +227,13 @@ public:
     // Ublox reports gnssFixOK=true with bogus coords during cold start (e.g. an
     // unfixed module on first boot reporting coordinates from factory almanac);
     // requiring fixType==3 filters those out.
-    if (ublox_GNSS.getGnssFixOk() && ublox_GNSS.getFixType() == 3) {
+    _sats = ublox_GNSS.getSIV();           // valid without a fix -- shows acquisition progress
+    _fixType = ublox_GNSS.getFixType();    // 0/1=none, 2=2D, 3=3D -- for the UI
+    if (ublox_GNSS.getGnssFixOk() && _fixType == 3) {
       _fix = true;
       _lat = ublox_GNSS.getLatitude() / 10;
       _lng = ublox_GNSS.getLongitude() / 10;
       _alt = ublox_GNSS.getAltitudeMSL();   // height above mean sea level, not ellipsoid
-      _sats = ublox_GNSS.getSIV();
     } else {
       _fix = false;
     }
