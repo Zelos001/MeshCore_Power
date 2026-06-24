@@ -897,8 +897,23 @@ bool EnvironmentSensorManager::gpsIsAwake(uint8_t ioPin){
 void EnvironmentSensorManager::start_gps() {
   gps_active = true;
   #ifdef RAK_WISBLOCK_GPS
-    pinMode(gpsResetPin, OUTPUT);
-    digitalWrite(gpsResetPin, HIGH);
+    #if defined(PIN_GPS_EN) && (PIN_GPS_EN >= 0)
+      pinMode(gpsResetPin, OUTPUT);
+      digitalWrite(gpsResetPin, HIGH);   // dedicated GPS enable pin
+    #else
+      // No dedicated enable pin: gpsResetPin is the shared 3V3_S rail (WB_IO2),
+      // which also powers the RTC/boost and must stay HIGH. Wake the receiver in
+      // software instead of touching the rail.
+      if (i2cGPSFlag) {
+        // UBX-CFG-RST "controlled GNSS start": resume the receiver stopped below.
+        static const uint8_t ubxGnssStart[] = {0xB5,0x62,0x06,0x04,0x04,0x00,0x00,0x00,0x09,0x00,0x17,0x76};
+        Wire.beginTransmission((uint8_t)TELEM_RAK12500_ADDRESS);
+        Wire.write(ubxGnssStart, sizeof(ubxGnssStart));
+        Wire.endTransmission();
+      } else if (serialGPSFlag) {
+        Serial1.write((uint8_t)0xFF);                              // wake MTK/Quectel from standby
+      }
+    #endif
     return;
   #endif
 
@@ -913,8 +928,25 @@ void EnvironmentSensorManager::start_gps() {
 void EnvironmentSensorManager::stop_gps() {
   gps_active = false;
   #ifdef RAK_WISBLOCK_GPS
-    pinMode(gpsResetPin, OUTPUT);
-    digitalWrite(gpsResetPin, LOW);
+    #if defined(PIN_GPS_EN) && (PIN_GPS_EN >= 0)
+      pinMode(gpsResetPin, OUTPUT);
+      digitalWrite(gpsResetPin, LOW);   // dedicated GPS enable pin
+    #else
+      // No dedicated enable pin: gpsResetPin is the shared 3V3_S rail (WB_IO2),
+      // which also powers the RTC/boost and must stay HIGH. Don't drop it; put
+      // the receiver into software low-power instead (rail/RTC stay up, warm-start).
+      if (i2cGPSFlag) {
+        // UBX-CFG-RST "controlled GNSS stop": stops RF/tracking but keeps the host
+        // interface alive, so it restarts reliably over I2C. (PMREQ backup only wakes
+        // on EXTINT/UART, not I2C -- confirmed dead on this hardware.)
+        static const uint8_t ubxGnssStop[] = {0xB5,0x62,0x06,0x04,0x04,0x00,0x00,0x00,0x08,0x00,0x16,0x74};
+        Wire.beginTransmission((uint8_t)TELEM_RAK12500_ADDRESS);
+        Wire.write(ubxGnssStop, sizeof(ubxGnssStop));
+        Wire.endTransmission();
+      } else if (serialGPSFlag) {
+        Serial1.println("$PMTK161,0*28");     // Quectel/MTK standby
+      }
+    #endif
     return;
   #endif
 
