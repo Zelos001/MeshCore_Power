@@ -27,12 +27,16 @@ protected:
   mesh::MainBoard* _board;
   BaseSerialInterface* _serial;
   bool _connected;
+  bool _wants_shutdown = false;
+  bool _restart_on_shutdown = false;
 
   AbstractUITask(mesh::MainBoard* board, BaseSerialInterface* serial) : _board(board), _serial(serial) {
     _connected = false;
   }
 
 public:
+  bool wantsShutdown() const { return _wants_shutdown; }
+  bool isRestart() const { return _restart_on_shutdown; }
   void setHasConnection(bool connected) { _connected = connected; }
   bool hasConnection() const { return _connected; }
   uint16_t getBattMilliVolts() const { return _board->getBattMilliVolts(); }

@@ -404,7 +404,7 @@ public:
       display.setColor(DisplayDriver::GREEN);
       display.setTextSize(1);
       if (_shutdown_init) {
-        display.drawTextCentered(display.width() / 2, 34, "hibernating...");
+        display.drawTextCentered(display.width() / 2, 34, "Shutting down...");
       } else {
         display.drawXbm((display.width() - 32) / 2, 18, power_icon, 32, 32);
         display.drawTextCentered(display.width() / 2, 64 - 11, "hibernate:" PRESS_LABEL);
@@ -697,9 +697,14 @@ void UITask::shutdown(bool restart){
   if (restart) {
     _board->reboot();
   } else {
-    _display->turnOff();
-    radio_driver.powerOff();
-    _board->powerOff();
+    if (_display != NULL) {
+      _display->startFrame();
+      _display->setTextSize(1);
+      _display->setColor(DisplayDriver::LIGHT);
+      _display->drawTextCentered(_display->width() / 2, 20, "Shutting down...");
+      _display->endFrame();
+    }
+    _wants_shutdown = true;
   }
 }
 
@@ -837,8 +842,8 @@ void UITask::loop() {
           _display->startFrame();
           _display->setTextSize(2);
           _display->setColor(DisplayDriver::RED);
-          _display->drawTextCentered(_display->width() / 2, 20, "Low Battery.");
-          _display->drawTextCentered(_display->width() / 2, 40, "Shutting Down!");
+          _display->drawTextCentered(_display->width() / 2, 20, "Low battery!");
+          _display->drawTextCentered(_display->width() / 2, 40, "Shutting down!");
           _display->endFrame();
           if (_display->isEink() == false) { delay(3000); }
         }

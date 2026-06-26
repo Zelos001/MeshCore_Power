@@ -307,8 +307,7 @@ void UITask::shutdown(bool restart){
   if (restart) {
     _board->reboot();
   } else {
-    radio_driver.powerOff();
-    _board->powerOff();
+    _wants_shutdown = true;
   }
 }
 
