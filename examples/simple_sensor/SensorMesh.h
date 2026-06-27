@@ -121,6 +121,15 @@ protected:
   uint32_t getDirectRetransmitDelay(const mesh::Packet* packet) override;
   int getInterferenceThreshold() const override;
   int getAGCResetInterval() const override;
+  uint8_t getCADTimeoutPolicy() const override {
+    return _prefs.cad_timeout_policy;
+  }
+  uint32_t getCADMaxDeferralMs() const override {
+    return ((uint32_t)_prefs.cad_max_defer_secs) * 1000UL;
+  }
+  uint8_t getCADMaxTimeouts() const override {
+    return _prefs.cad_max_timeouts;
+  }
   void onAnonDataRecv(mesh::Packet* packet, const uint8_t* secret, const mesh::Identity& sender, uint8_t* data, size_t len) override;
   int searchPeersByHash(const uint8_t* hash) override;
   void getPeerSharedSecret(uint8_t* dest_secret, int peer_idx) override;

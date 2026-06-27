@@ -89,6 +89,7 @@ public:
 
   virtual void queueOutbound(Packet* packet, uint8_t priority, uint32_t scheduled_for) = 0;
   virtual Packet* getNextOutbound(uint32_t now) = 0;    // by priority
+  virtual Packet* peekNextOutbound(uint32_t now) { return NULL; }
   virtual int getOutboundCount(uint32_t now) const = 0;
   virtual int getOutboundTotal() const = 0;
   virtual int getFreeCount() const = 0;
@@ -109,6 +110,33 @@ typedef uint32_t  DispatcherAction;
 #define ERR_EVENT_CAD_TIMEOUT       (1 << 1)
 #define ERR_EVENT_STARTRX_TIMEOUT   (1 << 2)
 
+#define CAD_TIMEOUT_POLICY_DEFER    0
+#define CAD_TIMEOUT_POLICY_DROP     1
+#define CAD_TIMEOUT_POLICY_FORCE    2
+
+// Keep CAD deferral fail-closed by default. A CAD timeout is currently about
+// four seconds, so three timeout cycles drops a packet after repeated confirmed
+// busy radio state; the age limit is a guard for jitter and priority changes.
+#define DEFAULT_CAD_MAX_DEFER_SECS      30
+#define DEFAULT_CAD_MAX_TIMEOUTS        3
+
+struct MacStats {
+  uint32_t cad_busy;
+  uint32_t cad_timeout;
+  uint32_t cad_forced_tx;
+  uint32_t cad_deferred_tx;
+  uint32_t cad_dropped_tx;
+  uint32_t cad_expired_tx;
+  uint32_t tx_start;
+  uint32_t tx_done;
+  uint32_t tx_start_fail;
+  uint32_t tx_timeout;
+  uint32_t rx_delay;
+  uint32_t retransmit;
+  uint32_t pool_full;
+  uint32_t invalid_queue;
+};
+
 /**
  * \brief  The low-level task that manages detecting incoming Packets, and the queueing
  *      and scheduling of outbound Packets.
@@ -126,6 +154,10 @@ class Dispatcher {
   unsigned long tx_budget_ms;
   unsigned long last_budget_update;
   unsigned long duty_cycle_window_ms;
+  Packet* cad_defer_packet;
+  unsigned long cad_defer_start;
+  uint8_t cad_defer_timeouts;
+  MacStats mac_stats;
 
   void processRecvPacket(Packet* pkt);
   void updateTxBudget();
@@ -159,12 +191,17 @@ protected:
   virtual void logRx(Packet* packet, int len, float score) { }   // hooks for custom logging
   virtual void logTx(Packet* packet, int len) { }
   virtual void logTxFail(Packet* packet, int len) { }
+  virtual void logMacEvent(const char* event, Packet* packet, int len, uint8_t priority,
+                           uint32_t delay_millis, uint32_t airtime_millis, uint32_t value) { }
   virtual const char* getLogDateTime() { return ""; }
 
   virtual float getAirtimeBudgetFactor() const;
   virtual int calcRxDelay(float score, uint32_t air_time) const;
   virtual uint32_t getCADFailRetryDelay() const;
   virtual uint32_t getCADFailMaxDuration() const;
+  virtual uint8_t getCADTimeoutPolicy() const { return CAD_TIMEOUT_POLICY_DEFER; }
+  virtual uint32_t getCADMaxDeferralMs() const { return DEFAULT_CAD_MAX_DEFER_SECS * 1000UL; }
+  virtual uint8_t getCADMaxTimeouts() const { return DEFAULT_CAD_MAX_TIMEOUTS; }
   virtual int getInterferenceThreshold() const { return 0; }    // disabled by default
   virtual int getAGCResetInterval() const { return 0; }    // disabled by default
   virtual unsigned long getDutyCycleWindowMs() const { return 3600000; }
@@ -184,8 +221,10 @@ public:
   uint32_t getNumSentDirect() const { return n_sent_direct; }
   uint32_t getNumRecvFlood() const { return n_recv_flood; }
   uint32_t getNumRecvDirect() const { return n_recv_direct; }
+  const MacStats& getMacStats() const { return mac_stats; }
   void resetStats() {
     n_sent_flood = n_sent_direct = n_recv_flood = n_recv_direct = 0;
+    memset(&mac_stats, 0, sizeof(mac_stats));
     _err_flags = 0;
   }
 

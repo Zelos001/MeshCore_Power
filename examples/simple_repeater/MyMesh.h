@@ -142,6 +142,8 @@ protected:
   void logRx(mesh::Packet* pkt, int len, float score) override;
   void logTx(mesh::Packet* pkt, int len) override;
   void logTxFail(mesh::Packet* pkt, int len) override;
+  void logMacEvent(const char* event, mesh::Packet* pkt, int len, uint8_t priority,
+                   uint32_t delay_millis, uint32_t airtime_millis, uint32_t value) override;
   int calcRxDelay(float score, uint32_t air_time) const override;
 
   uint32_t getRetransmitDelay(const mesh::Packet* packet) override;
@@ -152,6 +154,15 @@ protected:
   }
   int getAGCResetInterval() const override {
     return ((int)_prefs.agc_reset_interval) * 4000;   // milliseconds
+  }
+  uint8_t getCADTimeoutPolicy() const override {
+    return _prefs.cad_timeout_policy;
+  }
+  uint32_t getCADMaxDeferralMs() const override {
+    return ((uint32_t)_prefs.cad_max_defer_secs) * 1000UL;
+  }
+  uint8_t getCADMaxTimeouts() const override {
+    return _prefs.cad_max_timeouts;
   }
   uint8_t getExtraAckTransmitCount() const override {
     return _prefs.multi_acks;
@@ -214,6 +225,8 @@ public:
   void formatStatsReply(char *reply) override;
   void formatRadioStatsReply(char *reply) override;
   void formatPacketStatsReply(char *reply) override;
+  void formatMacCadStatsReply(char *reply) override;
+  void formatMacTxStatsReply(char *reply) override;
   void startRegionsLoad() override;
   bool saveRegions() override;
   void onDefaultRegionChanged(const RegionEntry* r) override;

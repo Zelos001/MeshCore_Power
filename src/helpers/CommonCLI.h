@@ -5,6 +5,7 @@
 #include <helpers/SensorManager.h>
 #include <helpers/ClientACL.h>
 #include <helpers/RegionMap.h>
+#include <string.h>
 
 #if defined(WITH_RS232_BRIDGE) || defined(WITH_ESPNOW_BRIDGE)
 #define WITH_BRIDGE
@@ -18,6 +19,10 @@
 #define LOOP_DETECT_MINIMAL   1
 #define LOOP_DETECT_MODERATE  2
 #define LOOP_DETECT_STRICT    3
+
+#define CAD_TIMEOUT_DEFER     CAD_TIMEOUT_POLICY_DEFER
+#define CAD_TIMEOUT_DROP      CAD_TIMEOUT_POLICY_DROP
+#define CAD_TIMEOUT_FORCE     CAD_TIMEOUT_POLICY_FORCE
 
 struct NodePrefs { // persisted to file
   float airtime_factor;
@@ -63,6 +68,9 @@ struct NodePrefs { // persisted to file
   uint8_t rx_boosted_gain; // power settings
   uint8_t path_hash_mode;   // which path mode to use when sending
   uint8_t loop_detect;
+  uint8_t cad_timeout_policy;
+  uint16_t cad_max_defer_secs;
+  uint8_t cad_max_timeouts;
 };
 
 class CommonCLICallbacks {
@@ -86,6 +94,12 @@ public:
   virtual void formatStatsReply(char *reply) = 0;
   virtual void formatRadioStatsReply(char *reply) = 0;
   virtual void formatPacketStatsReply(char *reply) = 0;
+  virtual void formatMacCadStatsReply(char *reply) {
+    strcpy(reply, "unsupported");
+  }
+  virtual void formatMacTxStatsReply(char *reply) {
+    strcpy(reply, "unsupported");
+  }
   virtual mesh::LocalIdentity& getSelfId() = 0;
   virtual void saveIdentity(const mesh::LocalIdentity& new_id) = 0;
   virtual void clearStats() = 0;

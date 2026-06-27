@@ -650,6 +650,9 @@ MyMesh::MyMesh(mesh::MainBoard &board, mesh::Radio &radio, mesh::MillisecondCloc
   _prefs.flood_max_unscoped = 64;
   _prefs.flood_max_advert = 8;
   _prefs.interference_threshold = 0; // disabled
+  _prefs.cad_timeout_policy = CAD_TIMEOUT_DEFER;
+  _prefs.cad_max_defer_secs = DEFAULT_CAD_MAX_DEFER_SECS;
+  _prefs.cad_max_timeouts = DEFAULT_CAD_MAX_TIMEOUTS;
 #ifdef ROOM_PASSWORD
   StrHelper::strncpy(_prefs.guest_password, ROOM_PASSWORD, sizeof(_prefs.guest_password));
 #endif

@@ -133,27 +133,80 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 ### Clear Stats
 **Usage:** `clear stats`
 
+Clears the node's runtime counters, including packet totals, radio counters, duplicate counters, error flags, and MAC/CAD diagnostic counters. It does not erase stored packet logs or change configuration.
+
 ---
 
 ### System Stats - Battery, Uptime, Queue Length and Debug Flags
 **Usage:** 
 - `stats-core`
 
-**Serial Only:** Yes
+**Serial Only:** No
+
+Returns JSON with:
+- `battery_mv`: current board battery reading in millivolts
+- `uptime_secs`: node uptime in seconds
+- `errors`: dispatcher error bitmask
+- `queue_len`: total queued outbound packets
 
 ---
 
 ### Radio Stats - Noise floor, Last RSSI/SNR, Airtime, Receive errors
 **Usage:** `stats-radio`
 
-**Serial Only:** Yes
+**Serial Only:** No
+
+Returns JSON with:
+- `noise_floor`: current radio noise floor estimate in dBm
+- `last_rssi`: RSSI from the most recent received packet
+- `last_snr`: SNR from the most recent received packet
+- `tx_air_secs`: accumulated transmit airtime in seconds
+- `rx_air_secs`: accumulated receive airtime estimate in seconds
 
 ---
 
 ### Packet stats - Packet counters: Received, Sent
 **Usage:** `stats-packets`
 
-**Serial Only:** Yes
+**Serial Only:** No
+
+Returns JSON with:
+- `recv` / `sent`: radio driver packet totals
+- `flood_tx` / `direct_tx`: dispatcher transmit totals by route type
+- `flood_rx` / `direct_rx`: dispatcher receive totals by route type
+- `recv_errors`: radio driver receive error count
+
+---
+
+### MAC CAD stats - CAD deferral and timeout counters
+**Usage:** `stats-mac-cad`
+
+**Serial Only:** No
+
+Returns JSON with:
+- `busy`: local radio/CAD busy deferrals before the timeout threshold
+- `timeouts`: times local CAD busy state exceeded the maximum busy duration
+- `forced_tx`: CAD timeout events that force-transmitted because fail-open mode was selected
+- `deferred_tx`: CAD timeout events that deferred and retried later
+- `dropped_tx`: packets dropped after CAD timeout policy
+- `expired_tx`: packets dropped because the maximum CAD deferral age or timeout count was reached
+
+---
+
+### MAC TX stats - TX, retransmit and queue counters
+**Usage:** `stats-mac-tx`
+
+**Serial Only:** No
+
+Returns JSON with:
+- `started`: transmit attempts started by the dispatcher
+- `completed`: transmit completions reported by the radio
+- `start_fail`: transmit attempts that failed to start
+- `timeouts`: transmit operations that timed out
+- `rx_delay`: received packets delayed before local processing
+- `retransmits`: packets scheduled for retransmit or forward
+- `pool_full`: packet allocation failures caused by pool exhaustion
+- `bad_queue`: invalid queued packets dropped before transmit
 
 ---
 
@@ -509,6 +562,48 @@ This document provides an overview of CLI commands that can be sent to MeshCore 
 **Default:** `0.2`
 
 **Note:** Same collision-avoidance random window as `txdelay`, but applied to direct (non-flood, routed) traffic. The default is lower because direct packets are addressed to a specific next hop, so far fewer nodes compete to retransmit them.
+
+---
+
+#### View or change CAD timeout policy
+**Usage:**
+- `get cad.timeout.policy`
+- `set cad.timeout.policy <policy>`
+
+**Parameters:**
+- `policy`: `defer`, `drop`, or `force`
+
+**Default:** `defer`
+
+**Note:** CAD means Channel Activity Detection. When the radio reports the channel busy for longer than the CAD timeout, `defer` keeps the queued packet and retries later, `drop` removes the next due packet, and `force` preserves the older fail-open behaviour of transmitting anyway. `force` should only be used for diagnostics or radio-state fallback because it can worsen congestion.
+
+---
+
+#### View or change maximum CAD deferral age
+**Usage:**
+- `get cad.max.defer`
+- `set cad.max.defer <seconds>`
+
+**Parameters:**
+- `seconds`: Maximum total age of the currently CAD-deferred packet, from 0 to 3600. `0` disables the age limit.
+
+**Default:** `30`
+
+**Note:** This prevents a packet from remaining queued indefinitely when the local radio keeps reporting the channel as busy. When the limit is reached, the next due packet is dropped and the `stats-mac` `ce` counter is incremented.
+
+---
+
+#### View or change maximum CAD timeout count
+**Usage:**
+- `get cad.max.timeouts`
+- `set cad.max.timeouts <count>`
+
+**Parameters:**
+- `count`: Maximum number of CAD timeout cycles allowed for the currently deferred packet, from 0 to 255. `0` disables the count limit.
+
+**Default:** `3`
+
+**Note:** With the default CAD timeout of about 4 seconds, a value of `3` means a packet can survive roughly three confirmed busy timeout cycles before it is dropped. The age and count limits are both active; whichever limit is reached first wins.
 
 ---
 
