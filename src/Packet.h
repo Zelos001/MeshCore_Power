@@ -63,6 +63,7 @@ public:
 
   bool isRouteFlood() const { return getRouteType() == ROUTE_TYPE_FLOOD || getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD; }
   bool isRouteDirect() const { return getRouteType() == ROUTE_TYPE_DIRECT || getRouteType() == ROUTE_TYPE_TRANSPORT_DIRECT; }
+  bool isRouteFuzzy() const;
 
   bool hasTransportCodes() const { return getRouteType() == ROUTE_TYPE_TRANSPORT_FLOOD || getRouteType() == ROUTE_TYPE_TRANSPORT_DIRECT; }
 
@@ -79,6 +80,7 @@ public:
   uint8_t getPathHashSize() const { return (path_len >> 6) + 1; }
   uint8_t getPathHashCount() const { return path_len & 63; }
   uint8_t getPathByteLen() const { return getPathHashCount() * getPathHashSize(); }
+  bool isPathHashOnlyFuzzy() const { return getPathHashCount() == 1 && isRouteFuzzy(); }
   void setPathHashCount(uint8_t n) { path_len &= ~63; path_len |= n; }
   void setPathHashSizeAndCount(uint8_t sz, uint8_t n) { path_len = ((sz - 1) << 6) | (n & 63); }
 

@@ -22,6 +22,10 @@
 #define MAX_PATH_SIZE        64
 #define MAX_TRANS_UNIT      255
 
+// Denotes that everything after this prefix can be used in a "fuzzy" repeat.
+// Repeated to match the path length (so 2-byte paths would use two of these, 3-byte would use 3).
+#define FUZZY_PATH_PREFIX 0xFF
+
 #if MESH_DEBUG && ARDUINO
   #include <Arduino.h>
   #define MESH_DEBUG_PRINT(F, ...) Serial.printf("DEBUG: " F, ##__VA_ARGS__)

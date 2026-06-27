@@ -56,6 +56,11 @@ protected:
   virtual bool allowPacketForward(const Packet* packet);
 
   /**
+   * \brief  Check whether this packet's next hop is a neighbor of ours.
+   */
+  virtual bool isNextHopNeighbor(const Packet* packet);
+
+  /**
    * \returns  number of milliseconds delay to apply to retransmitting the given packet.
    */
   virtual uint32_t getRetransmitDelay(const Packet* packet);

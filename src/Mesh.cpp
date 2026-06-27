@@ -14,6 +14,9 @@ void Mesh::loop() {
 bool Mesh::allowPacketForward(const mesh::Packet* packet) { 
   return false;  // by default, Transport NOT enabled
 }
+bool Mesh::isNextHopNeighbor(const mesh::Packet* packet) {
+  return false; // by default, neighbor tracking not enabled
+}
 uint32_t Mesh::getRetransmitDelay(const mesh::Packet* packet) { 
   uint32_t t = (_radio->getEstAirtimeFor(packet->getRawLength()) * 52 / 50) / 2;
 
@@ -74,7 +77,7 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
     return ACTION_RELEASE;
   }
 
-  if (pkt->isRouteDirect() && pkt->getPathHashCount() > 0) {
+  if (pkt->isRouteDirect() && pkt->getPathHashCount() > 0 && !pkt->isPathHashOnlyFuzzy()) {
     // check for 'early received' ACK
     if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK) {
       int i = 0;
@@ -85,25 +88,35 @@ DispatcherAction Mesh::onRecvPacket(Packet* pkt) {
       }
     }
 
-    if (self_id.isHashMatch(pkt->path, pkt->getPathHashSize()) && allowPacketForward(pkt)) {
-      if (pkt->getPayloadType() == PAYLOAD_TYPE_MULTIPART) {
-        return forwardMultipartDirect(pkt);
-      } else if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK) {
-        if (!_tables->hasSeen(pkt)) {  // don't retransmit!
-          removeSelfFromPath(pkt);
-          routeDirectRecvAcks(pkt, 0);
+    if (allowPacketForward(pkt)) {
+      bool is_next_hop = self_id.isHashMatch(pkt->path, pkt->getPathHashSize());
+      bool is_fuzzy_hop = !is_next_hop && pkt->isRouteFuzzy() && isNextHopNeighbor(pkt);
+      if (is_next_hop || is_fuzzy_hop) {
+        if (pkt->getPayloadType() == PAYLOAD_TYPE_MULTIPART) {
+          return forwardMultipartDirect(pkt);
+        } else if (pkt->getPayloadType() == PAYLOAD_TYPE_ACK) {
+          if (!_tables->hasSeen(pkt)) {  // don't retransmit!
+            removeSelfFromPath(pkt);
+            routeDirectRecvAcks(pkt, 0);
+          }
+          return ACTION_RELEASE;
         }
-        return ACTION_RELEASE;
-      }
 
-      if (!_tables->hasSeen(pkt)) {
-        removeSelfFromPath(pkt);
+        if (!_tables->hasSeen(pkt)) {
+          removeSelfFromPath(pkt);
 
-        uint32_t d = getDirectRetransmitDelay(pkt);
-        return ACTION_RETRANSMIT_DELAYED(0, d);  // Routed traffic is HIGHEST priority 
+          uint32_t d = getDirectRetransmitDelay(pkt);
+
+          if (is_next_hop) {
+            return ACTION_RETRANSMIT_DELAYED(0, d);  // Routed traffic is HIGHEST priority 
+          }
+          else {
+            return ACTION_RETRANSMIT_DELAYED(2, d); // Fuzzy traffic is high-ish priority
+          }
+        }
       }
+      return ACTION_RELEASE;   // this node is NOT the next hop (OR this packet has already been forwarded), so discard.
     }
-    return ACTION_RELEASE;   // this node is NOT the next hop (OR this packet has already been forwarded), so discard.
   }
 
   if (pkt->isRouteFlood() && filterRecvFloodPacket(pkt)) return ACTION_RELEASE;

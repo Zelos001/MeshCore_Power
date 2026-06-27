@@ -214,7 +214,7 @@ void MyMesh::logRx(mesh::Packet *pkt, int len, float score) {
     if (f) {
       f.print(getLogDateTime());
       f.printf(": RX, len=%d (type=%d, route=%s, payload_len=%d) SNR=%d RSSI=%d score=%d", len,
-               pkt->getPayloadType(), pkt->isRouteDirect() ? "D" : "F", pkt->payload_len,
+               pkt->getPayloadType(), pkt->isRouteDirect() ? (pkt->isRouteFuzzy() ? "Z" : "D") : "F", pkt->payload_len,
                (int)_radio->getLastSNR(), (int)_radio->getLastRSSI(), (int)(score * 1000));
 
       if (pkt->getPayloadType() == PAYLOAD_TYPE_PATH || pkt->getPayloadType() == PAYLOAD_TYPE_REQ ||
@@ -233,7 +233,7 @@ void MyMesh::logTx(mesh::Packet *pkt, int len) {
     if (f) {
       f.print(getLogDateTime());
       f.printf(": TX, len=%d (type=%d, route=%s, payload_len=%d)", len, pkt->getPayloadType(),
-               pkt->isRouteDirect() ? "D" : "F", pkt->payload_len);
+               pkt->isRouteDirect() ? (pkt->isRouteFuzzy() ? "Z" : "D") : "F", pkt->payload_len);
 
       if (pkt->getPayloadType() == PAYLOAD_TYPE_PATH || pkt->getPayloadType() == PAYLOAD_TYPE_REQ ||
           pkt->getPayloadType() == PAYLOAD_TYPE_RESPONSE || pkt->getPayloadType() == PAYLOAD_TYPE_TXT_MSG) {
@@ -251,7 +251,7 @@ void MyMesh::logTxFail(mesh::Packet *pkt, int len) {
     if (f) {
       f.print(getLogDateTime());
       f.printf(": TX FAIL!, len=%d (type=%d, route=%s, payload_len=%d)\n", len, pkt->getPayloadType(),
-               pkt->isRouteDirect() ? "D" : "F", pkt->payload_len);
+               pkt->isRouteDirect() ? (pkt->isRouteFuzzy() ? "Z" : "D") : "F", pkt->payload_len);
       f.close();
     }
   }
