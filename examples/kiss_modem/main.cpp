@@ -124,6 +124,7 @@ void setup() {
 }
 
 void loop() {
+  board.loop();
   modem->loop();
 
   if (!modem->isActuallyTransmitting()) {
