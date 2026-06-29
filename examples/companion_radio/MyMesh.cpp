@@ -844,13 +844,13 @@ void MyMesh::onTraceRecv(mesh::Packet *packet, uint32_t tag, uint32_t auth_code,
 }
 
 uint32_t MyMesh::calcFloodTimeoutMillisFor(uint32_t pkt_airtime_millis) const {
-  return SEND_TIMEOUT_BASE_MILLIS + (FLOOD_SEND_TIMEOUT_FACTOR * pkt_airtime_millis);
+  return (SEND_TIMEOUT_BASE_MILLIS + (FLOOD_SEND_TIMEOUT_FACTOR * pkt_airtime_millis)) * _prefs.ack_timeout_mult;
 }
 uint32_t MyMesh::calcDirectTimeoutMillisFor(uint32_t pkt_airtime_millis, uint8_t path_len) const {
   uint8_t path_hash_count = path_len & 63;
-  return SEND_TIMEOUT_BASE_MILLIS +
-         ((pkt_airtime_millis * DIRECT_SEND_PERHOP_FACTOR + DIRECT_SEND_PERHOP_EXTRA_MILLIS) *
-          (path_hash_count + 1));
+  return (SEND_TIMEOUT_BASE_MILLIS +
+          ((pkt_airtime_millis * DIRECT_SEND_PERHOP_FACTOR + DIRECT_SEND_PERHOP_EXTRA_MILLIS) *
+           (path_hash_count + 1))) * _prefs.ack_timeout_mult;
 }
 
 void MyMesh::onSendTimeout() {}
@@ -881,6 +881,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.tx_power_dbm = LORA_TX_POWER;
   _prefs.gps_enabled = 0;       // GPS disabled by default
   _prefs.gps_interval = 0;      // No automatic GPS updates by default
+  _prefs.ack_timeout_mult = 1;
   //_prefs.rx_delay_base = 10.0f;  enable once new algo fixed
 #if defined(USE_SX1262) || defined(USE_SX1268)
 #ifdef SX126X_RX_BOOSTED_GAIN
@@ -1070,6 +1071,7 @@ void MyMesh::handleCmdFrame(size_t len) {
     int tlen = strlen(_prefs.node_name); // revisit: UTF_8 ??
     memcpy(&out_frame[i], _prefs.node_name, tlen);
     i += tlen;
+    out_frame[i++] = _prefs.ack_timeout_mult;
     _serial->writeFrame(out_frame, i);
   } else if (cmd_frame[0] == CMD_SEND_TXT_MSG && len >= 14) {
     int i = 1;
@@ -1440,6 +1442,14 @@ void MyMesh::handleCmdFrame(size_t len) {
         _prefs.advert_loc_policy = cmd_frame[3];
         if (len >= 5) {
           _prefs.multi_acks = cmd_frame[4];
+          if (len >= 6) {
+            uint8_t mult = cmd_frame[5];
+            if (mult < 1 || mult > 10) {
+              writeErrFrame(ERR_CODE_ILLEGAL_ARG);
+              return;
+            }
+            _prefs.ack_timeout_mult = mult;
+          }
         }
       }
     }

@@ -428,6 +428,29 @@ Byte 0: 0x14
 
 ---
 
+### 9. Set Other Params
+
+**Purpose**: Update miscellaneous node preferences. All bytes after byte 1 are optional; omit trailing bytes to leave the corresponding preference unchanged.
+
+**Command Format**:
+```
+Byte 0: 0x26
+Byte 1: Manual Add Contacts (bool)
+Byte 2: Telemetry Mode (bitfield: bits [5:4] env, bits [3:2] loc, bits [1:0] base) [optional]
+Byte 3: Advertisement Location Policy [optional]
+Byte 4: Multi ACKs (bool) [optional]
+Byte 5: ACK Timeout Multiplier (1–10) [optional]
+```
+
+**Example** — set ACK timeout multiplier to 3, leaving other fields at current values (hex):
+```
+26 00 00 00 00 03
+```
+
+**Response**: `PACKET_OK` (0x00) on success, or `PACKET_ERROR` (0x01) / `ERR_CODE_ILLEGAL_ARG` (0x06) if the multiplier is outside the range 1–10.
+
+---
+
 ## Channel Management
 
 ### Channel Types
@@ -744,6 +767,7 @@ Bytes 52-55: Radio Bandwidth (32-bit little-endian, divided by 1000.0)
 Byte 56: Radio Spreading Factor
 Byte 57: Radio Coding Rate
 Bytes 58+: Device Name (UTF-8, variable length, no null terminator required)
+Byte 58+len(name): ACK Timeout Multiplier (1–10; multiplied against the computed DM ACK wait window)
 ```
 
 **Parsing Pseudocode**:
@@ -785,8 +809,13 @@ def parse_self_info(data):
     offset += 10
     
     if offset < len(data):
-        name_bytes = data[offset:]
-        info['name'] = name_bytes.decode('utf-8').rstrip('\x00').strip()
+        # name is variable-length; ack_timeout_mult is the single byte appended after it
+        payload = data[offset:]
+        if len(payload) > 1:
+            info['name'] = payload[:-1].decode('utf-8').rstrip('\x00').strip()
+            info['ack_timeout_mult'] = payload[-1]
+        else:
+            info['name'] = payload.decode('utf-8').rstrip('\x00').strip()
     
     return info
 ```
