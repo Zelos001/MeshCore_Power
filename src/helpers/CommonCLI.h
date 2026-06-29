@@ -114,6 +114,10 @@ public:
   virtual bool setRxBoostedGain(bool enable) {
     return false; // CommonCLI reports unsupported if not overridden by wrapper
   };
+
+  virtual void onBeforeReboot() {
+    // no op by default — override to flush nonces, etc.
+  };
 };
 
 class CommonCLI {
