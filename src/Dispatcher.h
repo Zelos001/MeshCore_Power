@@ -116,7 +116,10 @@ typedef uint32_t  DispatcherAction;
  *      and scheduling of outbound Packets.
 */
 class Dispatcher {
+protected:
   Packet* outbound;  // current outbound packet
+
+private:
   unsigned long outbound_expiry, outbound_start, total_air_time, rx_air_time;
   unsigned long next_tx_time;
   unsigned long cad_busy_start;
@@ -172,6 +175,11 @@ protected:
   virtual int getAGCResetInterval() const { return 0; }    // disabled by default
   virtual unsigned long getDutyCycleWindowMs() const { return 3600000; }
 
+  /**
+   * \returns  maximum number of direct-route resend attempts (0 = disabled, default = 2, max = 3).
+   */
+  virtual uint8_t getMaxResendAttempts() const { return 2; }
+
 public:
   void begin();
   void loop();
@@ -179,6 +187,21 @@ public:
   Packet* obtainNewPacket();
   void releasePacket(Packet* packet);
   void sendPacket(Packet* packet, uint8_t priority, uint32_t delay_millis=0);
+  /**
+   * \brief  re-send the given packet (for retransmission) if conditions apply.
+   * \return true, if packet was re-sent.
+   */
+  bool resendPacket(Packet *packet);
+
+  /**
+   * \returns  number of milliseconds delay to apply to retransmitting the given packet.
+   */
+  virtual uint32_t getRetransmitDelay(const Packet *packet) { return 0; };
+
+  /**
+   * \returns  number of milliseconds delay to apply to retransmitting the given packet, for DIRECT mode.
+   */
+  virtual uint32_t getDirectRetransmitDelay(const Packet *packet) { return 0; };
 
   unsigned long getTotalAirTime() const { return total_air_time; }
   unsigned long getReceiveAirTime() const {return rx_air_time; }

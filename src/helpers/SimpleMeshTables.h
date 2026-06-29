@@ -7,16 +7,21 @@
 #endif
 
 #define MAX_PACKET_HASHES  (128+32)
+#define MAX_PACKET_ACKS     64
 
 class SimpleMeshTables : public mesh::MeshTables {
   uint8_t _hashes[MAX_PACKET_HASHES*MAX_HASH_SIZE];
   int _next_idx;
+  uint32_t _acks[MAX_PACKET_ACKS];
+  int _next_ack_idx;
   uint32_t _direct_dups, _flood_dups;
 
 public:
   SimpleMeshTables() { 
     memset(_hashes, 0, sizeof(_hashes));
     _next_idx = 0;
+    memset(_acks, 0, sizeof(_acks));
+    _next_ack_idx = 0;
     _direct_dups = _flood_dups = 0;
   }
 
@@ -32,12 +37,46 @@ public:
 #endif
 
   bool hasSeen(const mesh::Packet* packet) override {
-    uint8_t hash[MAX_HASH_SIZE];
-    packet->calculatePacketHash(hash);
+    // ACK packets receive dedicated deduplication for three reasons:
+    //
+    // 1. The first 4 payload bytes (ack_crc) already uniquely identify the ACK – they
+    //    are the CRC of the original packet being acknowledged. A direct uint32_t
+    //    comparison is therefore both correct and far cheaper than computing a full
+    //    SHA256 via calculatePacketHash() (which the general path below would do).
+    //
+    // 2. With repeated sending (max_resend_attempts > 0) and multi-ACKs the same ACK
+    //    can arrive multiple times. Storing each occurrence in the shared _hashes[]
+    //    table (160 entries) would evict entries needed for long-lived flood-packet
+    //    deduplication. The dedicated _acks[] table (MAX_PACKET_ACKS entries) keeps
+    //    ACK and flood deduplication budgets separate.
+    //
+    // 3. clear() for ACKs is a simple 4-byte linear scan; using the general table
+    //    would require SHA256 + a full memcmp loop over MAX_PACKET_HASHES entries.
+    if (packet->getPayloadType() == PAYLOAD_TYPE_ACK) {
+      uint32_t ack;
+      memcpy(&ack, packet->payload, 4);
+      for (int i = 0; i < MAX_PACKET_ACKS; i++) {
+        if (ack == _acks[i]) { 
+          if (packet->isRouteDirect()) {
+            _direct_dups++;   // keep some stats
+          } else {
+            _flood_dups++;
+          }
+          MESH_DEBUG_PRINTLN("SimpleMeshTables::hasSeen(): packet %s already seen", packet->getHashHex());
+          return true;
+        }
+      }
+  
+      _acks[_next_ack_idx] = ack;
+      _next_ack_idx = (_next_ack_idx + 1) % MAX_PACKET_ACKS;  // cyclic table  
+      return false;
+    }
+
+    packet->calculatePacketHash();
 
     const uint8_t* sp = _hashes;
     for (int i = 0; i < MAX_PACKET_HASHES; i++, sp += MAX_HASH_SIZE) {
-      if (memcmp(hash, sp, MAX_HASH_SIZE) == 0) { 
+      if (memcmp(packet->hash, sp, MAX_HASH_SIZE) == 0) {
         if (packet->isRouteDirect()) {
           _direct_dups++;   // keep some stats
         } else {
@@ -47,20 +86,30 @@ public:
       }
     }
 
-    memcpy(&_hashes[_next_idx*MAX_HASH_SIZE], hash, MAX_HASH_SIZE);
+    memcpy(&_hashes[_next_idx * MAX_HASH_SIZE], packet->hash, MAX_HASH_SIZE);
     _next_idx = (_next_idx + 1) % MAX_PACKET_HASHES;  // cyclic table
     return false;
   }
 
   void clear(const mesh::Packet* packet) override {
-    uint8_t hash[MAX_HASH_SIZE];
-    packet->calculatePacketHash(hash);
+    if (packet->getPayloadType() == PAYLOAD_TYPE_ACK) {
+      uint32_t ack;
+      memcpy(&ack, packet->payload, 4);
+      for (int i = 0; i < MAX_PACKET_ACKS; i++) {
+        if (ack == _acks[i]) { 
+          _acks[i] = 0;
+          break;
+        }
+      }
+    } else {
+      packet->calculatePacketHash();
 
-    uint8_t* sp = _hashes;
-    for (int i = 0; i < MAX_PACKET_HASHES; i++, sp += MAX_HASH_SIZE) {
-      if (memcmp(hash, sp, MAX_HASH_SIZE) == 0) { 
-        memset(sp, 0, MAX_HASH_SIZE);
-        break;
+      uint8_t* sp = _hashes;
+      for (int i = 0; i < MAX_PACKET_HASHES; i++, sp += MAX_HASH_SIZE) {
+        if (memcmp(packet->hash, sp, MAX_HASH_SIZE) == 0) { 
+          memset(sp, 0, MAX_HASH_SIZE);
+          break;
+        }
       }
     }
   }
