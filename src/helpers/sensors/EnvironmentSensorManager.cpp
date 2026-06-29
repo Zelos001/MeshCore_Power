@@ -889,11 +889,11 @@ void EnvironmentSensorManager::stop_gps() {
 void EnvironmentSensorManager::loop() {
 
   #if ENV_INCLUDE_GPS
-  static long next_gps_update = 0;
+  static uint32_t last_gps_update = 0;
   if (gps_active) {
     _location->loop();
   }
-  if (millis() > next_gps_update) {
+  if ((uint32_t)(millis() - last_gps_update) >= (uint32_t)(gps_update_interval_sec * 1000)) {
 
     if(gps_active){
     #ifdef RAK_WISBLOCK_GPS
@@ -914,7 +914,7 @@ void EnvironmentSensorManager::loop() {
     }
     #endif
     }
-    next_gps_update = millis() + (gps_update_interval_sec * 1000);
+    last_gps_update = millis();
   }
   #endif
   #if ENV_INCLUDE_BME680_BSEC
