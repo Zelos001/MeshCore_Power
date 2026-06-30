@@ -4,6 +4,10 @@
 
 namespace mesh {
 
+#ifndef MAX_DIRECT_RETRY_SLOTS
+  #define MAX_DIRECT_RETRY_SLOTS  6
+#endif
+
 class GroupChannel {
 public:
   uint8_t hash[PATH_HASH_SIZE];
@@ -16,6 +20,7 @@ public:
 class MeshTables {
 public:
   virtual bool hasSeen(const Packet* packet) = 0;
+  virtual void markSent(const Packet* packet) = 0;
   virtual void clear(const Packet* packet) = 0;   // remove this packet hash from table
 };
 
@@ -28,13 +33,45 @@ class Mesh : public Dispatcher {
   RNG* _rng;
   MeshTables* _tables;
 
-  void removeSelfFromPath(Packet* packet);
+  struct DirectRetryEntry {
+    Packet* packet;
+    Packet* trigger_packet;
+    unsigned long retry_started_at;
+    unsigned long echo_wait_started_at;
+    unsigned long retry_at;
+    uint32_t retry_delay;
+    uint8_t retry_attempts_sent;
+    uint8_t retry_key[MAX_HASH_SIZE];
+    uint8_t next_hop_hash[MAX_HASH_SIZE];
+    uint8_t next_hop_hash_len;
+    uint8_t priority;
+    uint8_t progress_marker;
+    bool expect_path_growth;
+    bool waiting_final_echo;
+    bool queued;
+    bool active;
+  };
+
+  DirectRetryEntry _direct_retries[MAX_DIRECT_RETRY_SLOTS];
+
+  void removePathPrefix(Packet* packet, uint8_t prefix_count);
   void routeDirectRecvAcks(Packet* packet, uint32_t delay_millis);
+  void clearDirectRetrySlot(int idx);
+  bool isDirectRetryQueued(const Packet* packet) const;
+  void calculateDirectRetryKey(const Packet* packet, uint8_t* dest_key) const;
+  bool cancelDirectRetryOnEcho(const Packet* packet);
+  void armDirectRetryOnSendComplete(const Packet* packet);
+  void clearPendingDirectRetryOnSendFail(const Packet* packet);
+  bool getDirectRetryTarget(const Packet* packet, const uint8_t*& next_hop_hash, uint8_t& next_hop_hash_len,
+                            uint8_t& progress_marker, bool& expect_path_growth) const;
+  void maybeScheduleDirectRetry(const Packet* packet, uint8_t priority);
   //void routeRecvAcks(Packet* packet, uint32_t delay_millis);
   DispatcherAction forwardMultipartDirect(Packet* pkt);
 
 protected:
   DispatcherAction onRecvPacket(Packet* pkt) override;
+  void onSendComplete(Packet* packet) override;
+  void onSendFail(Packet* packet) override;
 
   virtual uint32_t getCADFailRetryDelay() const override;
 
@@ -66,9 +103,50 @@ protected:
   virtual uint32_t getDirectRetransmitDelay(const Packet* packet);
 
   /**
+   * \brief  Decide whether a DIRECT packet should get one delayed retry if the next hop echo is not overheard.
+   *         Sub-classes can use recent repeater or other link-quality data to opt in selectively.
+   */
+  virtual bool allowDirectRetry(const Packet* packet, const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) const;
+
+  /**
+   * \returns  milliseconds to wait for the next-hop echo before queueing one retry of the DIRECT packet.
+   */
+  virtual uint32_t getDirectRetryEchoDelay(const Packet* packet) const;
+
+  /**
+   * \returns  maximum number of retry transmissions after the initial direct TX.
+   */
+  virtual uint8_t getDirectRetryMaxAttempts(const Packet* packet) const;
+
+  /**
+   * \returns  delay before a specific retry attempt, where attempt_idx=0 is the first retry.
+   */
+  virtual uint32_t getDirectRetryAttemptDelay(const Packet* packet, uint8_t attempt_idx);
+
+  /**
    * \returns  number of extra (Direct) ACK transmissions wanted.
    */
   virtual uint8_t getExtraAckTransmitCount() const;
+
+  /**
+   * \brief  Optional hook for logging direct-retry lifecycle events.
+   */
+  virtual void onDirectRetryEvent(const char* event, const Packet* packet, uint32_t delay_millis, uint8_t retry_attempt) { }
+
+  /**
+   * \brief  Optional hook for link-quality feedback when all direct-retry attempts fail.
+   */
+  virtual void onDirectRetryFailed(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len) { }
+
+  /**
+   * \brief  Optional hook for link-quality feedback when a direct-retry echo is heard.
+   */
+  virtual void onDirectRetrySucceeded(const uint8_t* next_hop_hash, uint8_t next_hop_hash_len, int8_t snr_x4) { }
+
+  /**
+   * \brief  Optional hook to set local-only transmit options on a retry packet before it is queued.
+   */
+  virtual void configureDirectRetryPacket(Packet* retry, const Packet* original, uint8_t retry_attempt) { }
 
   /**
    * \brief  Perform search of local DB of peers/contacts.
@@ -185,10 +263,10 @@ public:
   Packet* createDatagram(uint8_t type, const Identity& dest, const uint8_t* secret, const uint8_t* data, size_t len);
   Packet* createAnonDatagram(uint8_t type, const LocalIdentity& sender, const Identity& dest, const uint8_t* secret, const uint8_t* data, size_t data_len);
   Packet* createGroupDatagram(uint8_t type, const GroupChannel& channel, const uint8_t* data, size_t data_len);
-  Packet* createAck(const uint8_t* ack, uint8_t len);
-  Packet* createAck(uint32_t ack_crc) { return createAck((uint8_t *) &ack_crc, 4); }
-  Packet* createMultiAck(const uint8_t* ack, uint8_t len, uint8_t remaining);
-  Packet* createMultiAck(uint32_t ack_crc, uint8_t remaining) { return createMultiAck((uint8_t *)&ack_crc, 4, remaining); }
+  Packet* createAck(const uint8_t* ack_hash, uint8_t ack_len);
+  Packet* createAck(uint32_t ack_crc);
+  Packet* createMultiAck(const uint8_t* ack_hash, uint8_t ack_len, uint8_t remaining);
+  Packet* createMultiAck(uint32_t ack_crc, uint8_t remaining);
   Packet* createPathReturn(const uint8_t* dest_hash, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
   Packet* createPathReturn(const Identity& dest, const uint8_t* secret, const uint8_t* path, uint8_t path_len, uint8_t extra_type, const uint8_t*extra, size_t extra_len);
   Packet* createRawData(const uint8_t* data, size_t len);
