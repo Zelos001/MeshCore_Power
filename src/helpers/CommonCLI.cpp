@@ -922,7 +922,8 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
 #endif
   } else if (memcmp(config, "pwrmgt.bootmv", 13) == 0) {
 #ifdef NRF52_POWER_MANAGEMENT
-    sprintf(reply, "> %u mV", _board->getBootVoltage());
+    sprintf(reply, _board->isBootVoltageValid() ? "> %u mV" : "> %u mV invalid",
+      _board->getBootVoltage());
 #else
     strcpy(reply, "ERROR: Power management not supported");
 #endif
