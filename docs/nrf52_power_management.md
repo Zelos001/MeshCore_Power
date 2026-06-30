@@ -8,14 +8,19 @@ The nRF52 Power Management module provides battery protection features to preven
 
 ### Boot Voltage Protection
 - Checks battery voltage immediately after boot and before mesh operations commence
-- If voltage is below a configurable threshold (e.g., 3300mV), the device configures voltage wake (LPCOMP + VBUS) and enters protective shutdown (SYSTEMOFF)
+- If voltage is below a configurable threshold (e.g., 3300mV), and the board declares the battery sense path valid, the device configures voltage wake and enters protective shutdown (SYSTEMOFF)
 - Prevents boot loops when battery is critically low
-- Skipped when external power (USB VBUS) is detected
+- Skipped when external power (USB VBUS) is detected, or when the battery voltage evidence is invalid or implausible
 
 ### Voltage Wake (LPCOMP + VBUS)
-- Configures the nRF52's Low Power Comparator (LPCOMP) before entering SYSTEMOFF
-- Enables USB VBUS detection so external power can wake the device
+- Configures the nRF52's Low Power Comparator (LPCOMP) before entering SYSTEMOFF only when the board declares the LPCOMP sense node valid
+- Enables USB VBUS detection independently where hardware supports VBUS wake
 - Device automatically wakes when battery voltage rises above recovery threshold or when VBUS is detected
+
+### Power Source State
+- `get pwrmgt.source` returns a composite state with a confidence suffix: `vusb+bat`, `vusb-only`, `bat-only`, or `none`, followed by `:valid`, `:implausible`, `:invalid`, or `:unknown`
+- `invalid` means the board cannot use the configured battery sense path for protective decisions
+- `implausible` means the sensed voltage is outside the board's configured plausible range
 
 ### Early Boot Register Capture
 - Captures RESETREAS (reset reason) and GPREGRET2 (shutdown reason) before SystemInit() clears them
@@ -37,7 +42,7 @@ Shutdown reason codes (stored in GPREGRET2):
 
 | Board                                     | Implemented | LPCOMP wake | VBUS wake |
 |-------------------------------------------|-------------|-------------|-----------|
-| Seeed Studio XIAO nRF52840 (`xiao_nrf52`) | Yes         | Yes         | Yes       |
+| Seeed Studio XIAO nRF52840 (`xiao_nrf52`) | Yes         | No          | Yes       |
 | RAK4631 (`rak4631`)                       | Yes         | Yes         | Yes       |
 | Heltec T114 (`heltec_t114`)               | Yes         | Yes         | Yes       |
 | GAT562 Mesh Watch13                       | Yes         | Yes         | Yes       |
@@ -59,7 +64,8 @@ Shutdown reason codes (stored in GPREGRET2):
 Notes:
 - "Implemented" reflects Phase 1 (boot lockout + shutdown reason capture).
 - User power-off on Heltec T114 does not enable LPCOMP wake.
-- VBUS detection is used to skip boot lockout on external power, and VBUS wake is configured alongside LPCOMP when supported hardware exposes VBUS to the nRF52.
+- VBUS detection is used to skip boot lockout on external power. VBUS wake is configured independently from LPCOMP where supported hardware exposes VBUS to the nRF52.
+- XIAO nRF52 disables trusted BAT/LPCOMP protection by default because BAT+ may be disconnected while VUSB is the actual supply.
 
 ## Technical Details
 
@@ -97,7 +103,12 @@ To enable power management on a board variant:
    const PowerMgtConfig power_config = {
      .lpcomp_ain_channel = PWRMGT_LPCOMP_AIN,
      .lpcomp_refsel = PWRMGT_LPCOMP_REFSEL,
-     .voltage_bootlock = PWRMGT_VOLTAGE_BOOTLOCK
+     .voltage_bootlock = PWRMGT_VOLTAGE_BOOTLOCK,
+     .battery_voltage_sense_valid = true,
+     .lpcomp_voltage_wake_valid = true,
+     .vbus_wake_valid = true,
+     .battery_min_plausible_mv = 1000,
+     .battery_max_plausible_mv = 6500
    };
 
    void MyBoard::initiateShutdown(uint8_t reason) {
@@ -106,7 +117,7 @@ To enable power management on a board variant:
                            reason == SHUTDOWN_REASON_BOOT_PROTECT);
 
      if (enable_lpcomp) {
-       configureVoltageWake(power_config.lpcomp_ain_channel, power_config.lpcomp_refsel);
+       configureVoltageWake(&power_config);
      }
 
      enterSystemOff(reason);
@@ -182,7 +193,7 @@ Power management status can be queried via the CLI:
 | Command                 | Description                                                           |
 |-------------------------|-----------------------------------------------------------------------|
 | `get pwrmgt.support`    | Returns "supported" or "unsupported"                                  |
-| `get pwrmgt.source`     | Returns current power source - "battery" or "external" (5V/USB power) |
+| `get pwrmgt.source`     | Returns composite source and confidence, e.g. `vusb+bat:valid`        |
 | `get pwrmgt.bootreason` | Returns reset and shutdown reason strings                             |
 | `get pwrmgt.bootmv`     | Returns boot voltage in millivolts                                    |
 
