@@ -248,16 +248,29 @@ void setup() {
   board.onBootComplete();
 }
 
-// Diese Variablen außerhalb der Hauptschleife als global/static definieren
-static bool usb_power_lost = false; 
+// Heltec V3/V4 kompatible Erkennung über die gemessene Spannung
+bool check_if_usb_connected() {
+    // MeshCore bietet meistens eine globale Funktion wie getBatteryVoltage() 
+    // oder liest den analogen Pin direkt aus. 
+    // Falls deine Firmware 'getBatteryVoltage()' nutzt, liefert diese Volt (z.B. 4.15)
+    float voltage = getBatteryVoltage(); 
+
+    // Wenn die Spannung über 4.3V liegt, drückt der USB-Ladestrom in den Pin.
+    // Liegt sie unter 0.5V, ist vermutlich gar kein Akku/Strom dran (Fehlmessung abfangen).
+    if (voltage > 4.30f) {
+        return true;  // USB ist angeschlossen und lädt
+    }
+    return false;     // Läuft rein auf Batterie (oder USB liefert keinen Strom)
+}
 
 // Funktion wird in der Hauptschleife (z.B. im loop() oder Telemetrie-Task) aufgerufen
 void check_power_source() {
     // Heltec V4 nutzt je nach Hardware-Revision einen analogen Lese-Pin 
     // oder das PMIC-Register, um USB-Spannung (VBUS) zu erkennen.
     // 'is_usb_connected()' ist hier die schematische Funktion für die Erkennung.
-    bool usb_present = is_usb_connected(); 
-
+    // bool usb_present = is_usb_connected(); 
+    bool usb_present = check_if_usb_connected(); 
+  
     if (!usb_present && !usb_power_lost) {
         // USB-Strom wurde gerade getrennt -> Gerät läuft nun auf Akku
         send_channel_text_message("offline", 2); 
