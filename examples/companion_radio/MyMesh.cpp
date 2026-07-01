@@ -2230,8 +2230,22 @@ void MyMesh::checkSerialInterface() {
 #include "USB.h"
 
 bool MyMesh::check_if_usb_connected() {
-    // Prüft, ob der USB-Host Strom liefert / verbunden ist
-    return USB::connected(); 
+    // Heltec V3 nutzt intern oft GPIO 35 oder ein definiertes Makro zur USB/Lade-Erkennung
+    // Wir initialisieren den Pin sicherheitshalber als Input
+    static bool pin_set = false;
+    if (!pin_set) {
+        pinMode(ADC_CTRL, OUTPUT);
+        digitalWrite(ADC_CTRL, LOW); // Aktiviert die Messschaltung beim Heltec V3
+        pin_set = true;
+    }
+
+    // Wenn USB eingesteckt ist, zieht die USB-Spannung den Vext/Battery-Read-Pfad hoch.
+    // Ein analoger Wert nahe dem Maximum (über 4000 bei 12-Bit) signalisiert USB-Power.
+    int usb_signal = analogRead(BOARD_POWERON); // Alternativ: analogRead(3) je nach BSP
+    
+    // USB liefert stabile 5V, der Akku maximal 4.2V. 
+    // Wenn der Messwert über dem Maximum eines vollen Akkus liegt:
+    return (usb_signal > 2500); 
 }
 
 
