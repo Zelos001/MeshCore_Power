@@ -2235,30 +2235,26 @@ void MyMesh::check_power_source() {
     if ((!usb_present && !this->usb_power_lost) || (usb_present && this->usb_power_lost)) {
         
 
-   // 1. Nutze die existierende Methode, um ein valides Paket-Objekt zu allokieren
-// Als Argument übergeben wir 0 (da wir keinen echten ACK-Hash brauchen)
+// 1. Allokiere ein leeres Paket über die vom Compiler bestätigte Methode
 mesh::Packet* pkt = this->createAck(0);
 
 if (pkt != nullptr) {
-    // 2. Setze den Header für ein Text-Paket (Standard-Payload-Typ für Text)
-    // In MeshCore ist pkt->header ein uint8_t, in das der Typ geschrieben wird
-    pkt->header = 0x02; // Typ für Standard-Textnachrichten
+    // 2. Kanal 6 im Header kodieren (Bitmaske für Kanal-ID)
+    // MeshCore nutzt die oberen Bits des Headers für den Kanalindex.
+    // Typischerweise: APP_TEXT (0x02) oder über Bitverschiebung: (6 << 4) | 0x02
+    pkt->header = (6 << 4) | 0x02; 
 
-    // 3. Setze den Kanalindex (Kanal 6)
-    pkt->channel_idx = 6; 
-
-    // 4. Text-Payload hineinkopieren
+    // 3. Text-Payload in das Paket kopieren
     const char* msg = "online";
     size_t len = strlen(msg);
     if (len > sizeof(pkt->payload)) len = sizeof(pkt->payload);
     memcpy(pkt->payload, msg, len);
     pkt->payload_len = len;
 
-    // 5. Mit der im Framework definierten Methode absenden
-    // sendDirect erwartet das Paket und das Sende-Ziel (Broadcast)
-    this->sendDirect(pkt, mesh::ADDR_BROADCAST);
+    // 4. Das Paket als Flood (an alle/Broadcast) in das Netzwerk senden
+    this->sendFlood(pkt);
 }
-   
+
       
       
       // Status für den nächsten Durchlauf umkehren
