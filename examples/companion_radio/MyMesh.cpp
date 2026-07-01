@@ -2240,7 +2240,7 @@ void MyMesh::check_power_source() {
         // Wir nutzen die native Methode 'sendDataPacket', die in MeshCore vererbt wird.
         // Port 1 ist im System der CHAT_PORT.
         // Parameter: (Port, Daten-Pointer, Länge, Ziel_Node [0xFFFF = Broadcast])
-        this->sendDataPacket(1, (uint8_t*)msg.c_str(), msg.length(), 0xFFFF);
+        this->sendPacket(1, (uint8_t*)msg.c_str(), msg.length(), 0xFFFF);
 
         // Status für den nächsten Durchlauf invertieren
         this->usb_power_lost = !usb_present; 
