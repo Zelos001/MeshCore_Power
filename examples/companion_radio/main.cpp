@@ -2,15 +2,6 @@
 #include <Mesh.h>
 #include "MyMesh.h"
 
-#ifndef ADC_PIN
-  #define ADC_PIN 1 // Beim Heltec V3/V4 oft GPIO 1 für die Batterie
-#endif
-// Globale oder statische Variablen zur Statusspeicherung
-static bool usb_power_lost = false; 
-unsigned long last_power_check = 0;
-const unsigned long CHECK_INTERVAL = 5000; // Prüft den Stromstatus alle 5 Sekunden (5000 ms)
-
-
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
   uint32_t n = 0;
@@ -251,47 +242,6 @@ void setup() {
   board.onBootComplete();
 }
 
-// 1. DIESE FUNKTION MUSS GANZ OBEN STEHEN, DAMIT C++ SIE KENNT!
-void send_channel_text_message(const char* text, uint8_t channelIndex) {
-    // In MeshCore's companion_radio wird das Senden oft über das Radio- oder Mesh-Objekt initiiert.
-    // Wir nutzen hier den plattformkonformen MeshCore-Aufruf:
-    mesh.sendChannelText(channelIndex, text); 
-}
-
-bool check_if_usb_connected() {
-    // Direktes Auslesen des analogen Pins
-    int raw = analogRead(ADC_PIN);
-    // Umrechnung in Volt (abhängig vom internen Spannungsteiler des Heltec V3/V4)
-    float voltage = (raw / 4095.0f) * 2.0f * 3.3f * 1.1f; 
-
-    // Wenn am Akku über 4.3V anliegen, drückt USB-Ladestrom rein
-    if (voltage > 4.30f) {
-        return true; 
-    }
-    return false;
-}
-
-
-// Funktion wird in der Hauptschleife (z.B. im loop() oder Telemetrie-Task) aufgerufen
-void check_power_source() {
-    // Heltec V4 nutzt je nach Hardware-Revision einen analogen Lese-Pin 
-    // oder das PMIC-Register, um USB-Spannung (VBUS) zu erkennen.
-    // 'is_usb_connected()' ist hier die schematische Funktion für die Erkennung.
-    // bool usb_present = is_usb_connected(); 
-    bool usb_present = check_if_usb_connected(); 
-  
-    if (!usb_present && !usb_power_lost) {
-        // USB-Strom wurde gerade getrennt -> Gerät läuft nun auf Akku
-        send_channel_text_message("offline", 2); 
-        usb_power_lost = true; 
-    } 
-    else if (usb_present && usb_power_lost) {
-        // USB-Strom ist wieder da
-        send_channel_text_message("online", 2); 
-        usb_power_lost = false; 
-    }
-}
-
 
 void loop() {
   the_mesh.loop();
@@ -307,12 +257,6 @@ void loop() {
 #endif
   }
 
-// --- Georg Anpassung ---
-// Prüft, ob seit dem letzten Check 5 Sekunden vergangen sind
-if (millis() - last_power_check >= CHECK_INTERVAL) {
-    last_power_check = millis(); // Zeitstempel aktualisieren
-    check_power_source();        // Deine Funktion aufrufen
-}
   
 #if defined(ESP32) && defined(WIFI_SSID)
   // Safely attempt to reconnect every 10 seconds if flagged
