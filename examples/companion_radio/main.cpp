@@ -2,6 +2,9 @@
 #include <Mesh.h>
 #include "MyMesh.h"
 
+#ifndef ADC_PIN
+  #define ADC_PIN 1 // Beim Heltec V3/V4 oft GPIO 1 für die Batterie
+#endif
 // Globale oder statische Variablen zur Statusspeicherung
 static bool usb_power_lost = false; 
 unsigned long last_power_check = 0;
@@ -248,20 +251,21 @@ void setup() {
   board.onBootComplete();
 }
 
-// Heltec V3/V4 kompatible Erkennung über die gemessene Spannung
-bool check_if_usb_connected() {
-    // MeshCore bietet meistens eine globale Funktion wie getBatteryVoltage() 
-    // oder liest den analogen Pin direkt aus. 
-    // Falls deine Firmware 'getBatteryVoltage()' nutzt, liefert diese Volt (z.B. 4.15)
-    float voltage = getBatteryVoltage(); 
 
-    // Wenn die Spannung über 4.3V liegt, drückt der USB-Ladestrom in den Pin.
-    // Liegt sie unter 0.5V, ist vermutlich gar kein Akku/Strom dran (Fehlmessung abfangen).
+
+bool check_if_usb_connected() {
+    // Direktes Auslesen des analogen Pins
+    int raw = analogRead(ADC_PIN);
+    // Umrechnung in Volt (abhängig vom internen Spannungsteiler des Heltec V3/V4)
+    float voltage = (raw / 4095.0f) * 2.0f * 3.3f * 1.1f; 
+
+    // Wenn am Akku über 4.3V anliegen, drückt USB-Ladestrom rein
     if (voltage > 4.30f) {
-        return true;  // USB ist angeschlossen und lädt
+        return true; 
     }
-    return false;     // Läuft rein auf Batterie (oder USB liefert keinen Strom)
+    return false;
 }
+
 
 // Funktion wird in der Hauptschleife (z.B. im loop() oder Telemetrie-Task) aufgerufen
 void check_power_source() {
