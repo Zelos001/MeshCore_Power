@@ -2,6 +2,12 @@
 #include <Mesh.h>
 #include "MyMesh.h"
 
+// Globale oder statische Variablen zur Statusspeicherung
+static bool usb_power_lost = false; 
+unsigned long last_power_check = 0;
+const unsigned long CHECK_INTERVAL = 5000; // Prüft den Stromstatus alle 5 Sekunden (5000 ms)
+
+
 // Believe it or not, this std C function is busted on some platforms!
 static uint32_t _atoi(const char* sp) {
   uint32_t n = 0;
@@ -242,6 +248,29 @@ void setup() {
   board.onBootComplete();
 }
 
+// Diese Variablen außerhalb der Hauptschleife als global/static definieren
+static bool usb_power_lost = false; 
+
+// Funktion wird in der Hauptschleife (z.B. im loop() oder Telemetrie-Task) aufgerufen
+void check_power_source() {
+    // Heltec V4 nutzt je nach Hardware-Revision einen analogen Lese-Pin 
+    // oder das PMIC-Register, um USB-Spannung (VBUS) zu erkennen.
+    // 'is_usb_connected()' ist hier die schematische Funktion für die Erkennung.
+    bool usb_present = is_usb_connected(); 
+
+    if (!usb_present && !usb_power_lost) {
+        // USB-Strom wurde gerade getrennt -> Gerät läuft nun auf Akku
+        send_channel_text_message("offline", 2); 
+        usb_power_lost = true; 
+    } 
+    else if (usb_present && usb_power_lost) {
+        // USB-Strom ist wieder da
+        send_channel_text_message("online", 2); 
+        usb_power_lost = false; 
+    }
+}
+
+
 void loop() {
   the_mesh.loop();
   sensors.loop();
@@ -256,6 +285,13 @@ void loop() {
 #endif
   }
 
+// --- Georg Anpassung ---
+// Prüft, ob seit dem letzten Check 5 Sekunden vergangen sind
+if (millis() - last_power_check >= CHECK_INTERVAL) {
+    last_power_check = millis(); // Zeitstempel aktualisieren
+    check_power_source();        // Deine Funktion aufrufen
+}
+  
 #if defined(ESP32) && defined(WIFI_SSID)
   // Safely attempt to reconnect every 10 seconds if flagged
   if (wifi_needs_reconnect && (millis() - last_wifi_reconnect_attempt > 10000)) {
