@@ -102,7 +102,12 @@ public:
 
   int  getRecentlyHeard(AdvertPath dest[], int max_num);
 
+
 protected:
+  bool usb_power_lost = false; 
+  unsigned long last_power_check = 0;
+  const unsigned long CHECK_INTERVAL = 5000; // Alle 5 Sekunden prüfen
+
   float getAirtimeBudgetFactor() const override;
   int getInterferenceThreshold() const override;
   int calcRxDelay(float score, uint32_t air_time) const override;
