@@ -251,7 +251,12 @@ void setup() {
   board.onBootComplete();
 }
 
-
+// 1. DIESE FUNKTION MUSS GANZ OBEN STEHEN, DAMIT C++ SIE KENNT!
+void send_channel_text_message(const char* text, uint8_t channelIndex) {
+    // In MeshCore's companion_radio wird das Senden oft über das Radio- oder Mesh-Objekt initiiert.
+    // Wir nutzen hier den plattformkonformen MeshCore-Aufruf:
+    mesh.sendChannelText(channelIndex, text); 
+}
 
 bool check_if_usb_connected() {
     // Direktes Auslesen des analogen Pins
