@@ -2234,29 +2234,34 @@ void MyMesh::check_power_source() {
     // Nur senden, wenn sich der Status tatsächlich geändert hat
     if ((!usb_present && !this->usb_power_lost) || (usb_present && this->usb_power_lost)) {
         
-// 1. Erstelle ein leeres Mesh-Paket über den Framework-Allokator
-mesh::Packet* pkt = this->createPacket();
+
+   // 1. Nutze die existierende Methode, um ein valides Paket-Objekt zu allokieren
+// Als Argument übergeben wir 0 (da wir keinen echten ACK-Hash brauchen)
+mesh::Packet* pkt = this->createAck(0);
+
 if (pkt != nullptr) {
-    // 2. Setze die Zieladresse auf Broadcast (an alle)
-    pkt->header.to = mesh::ADDR_BROADCAST;
-    
-    // 3. Kanalindex setzen (Achtung: Kanäle sind oft 0-indiziert. Kanal 6 = Index 5, oder direkt 6)
-    pkt->header.channel_idx = 6; 
-    
-    // 4. Protokoll-Typ als App-Text deklarieren
-    pkt->header.app = mesh::APP_TEXT; 
-    
-    // 5. Text-Payload kopieren
+    // 2. Setze den Header für ein Text-Paket (Standard-Payload-Typ für Text)
+    // In MeshCore ist pkt->header ein uint8_t, in das der Typ geschrieben wird
+    pkt->header = 0x02; // Typ für Standard-Textnachrichten
+
+    // 3. Setze den Kanalindex (Kanal 6)
+    pkt->channel_idx = 6; 
+
+    // 4. Text-Payload hineinkopieren
     const char* msg = "online";
     size_t len = strlen(msg);
     if (len > sizeof(pkt->payload)) len = sizeof(pkt->payload);
     memcpy(pkt->payload, msg, len);
     pkt->payload_len = len;
-    
-    // 6. Das fertige Paket in die Sende-Queue einspeisen
-    this->queuePacket(pkt);
+
+    // 5. Mit der im Framework definierten Methode absenden
+    // sendDirect erwartet das Paket und das Sende-Ziel (Broadcast)
+    this->sendDirect(pkt, mesh::ADDR_BROADCAST);
 }
-        // Status für den nächsten Durchlauf umkehren
+   
+      
+      
+      // Status für den nächsten Durchlauf umkehren
         this->usb_power_lost = !usb_present; 
     }
 }
