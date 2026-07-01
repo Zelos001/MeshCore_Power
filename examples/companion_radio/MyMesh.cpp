@@ -2230,22 +2230,30 @@ void MyMesh::checkSerialInterface() {
 #include "USB.h"
 
 bool MyMesh::check_if_usb_connected() {
-    // Heltec V3 nutzt intern oft GPIO 35 oder ein definiertes Makro zur USB/Lade-Erkennung
-    // Wir initialisieren den Pin sicherheitshalber als Input
-    static bool pin_set = false;
-    if (!pin_set) {
-        pinMode(ADC_CTRL, OUTPUT);
-        digitalWrite(ADC_CTRL, LOW); // Aktiviert die Messschaltung beim Heltec V3
-        pin_set = true;
-    }
+    // 1. Schwellenwert definieren:
+    // Der ESP32-S3 ADC liefert bei 12-Bit Werte von 0 bis 4095.
+    // Ein voller Akku (4.2V) liegt nach dem Teiler meist bei ca. 2100-2400.
+    // Liegt USB an, springt der Wert deutlich über 2800+ (oft nahe 3000+).
+    const int USB_THRESHOLD = 2700; 
 
-    // Wenn USB eingesteckt ist, zieht die USB-Spannung den Vext/Battery-Read-Pfad hoch.
-    // Ein analoger Wert nahe dem Maximum (über 4000 bei 12-Bit) signalisiert USB-Power.
-    int usb_signal = analogRead(BOARD_POWERON); // Alternativ: analogRead(3) je nach BSP
+    // 2. Messschaltung des Heltec V3 aktivieren via PIN_CTRL (GPIO 37)
+    pinMode(PIN_CTRL, OUTPUT);
+    digitalWrite(PIN_CTRL, LOW); // LOW schaltet den Spannungsteiler beim V3 aktiv
+    delay(5);                    // Kurze Pause, damit sich die Spannung stabilisiert
+
+    // 3. Analogwert von GPIO 1 (Batterie-Read-Pin) einlesen
+    // Falls die Konstante '1' eine Fehlermeldung wirft, nutzen Sie alternativ analogRead(1);
+    int raw_voltage = analogRead(1); 
+
+    // 4. Schaltung wieder schlafen legen, um Batterie zu sparen
+    digitalWrite(PIN_CTRL, HIGH); 
+
+    // 5. Auswertung: Ist der Wert höher als ein normaler Akku liefern kann?
+    if (raw_voltage > USB_THRESHOLD) {
+        return true;  // USB ist definitiv eingesteckt
+    }
     
-    // USB liefert stabile 5V, der Akku maximal 4.2V. 
-    // Wenn der Messwert über dem Maximum eines vollen Akkus liegt:
-    return (usb_signal > 2500); 
+    return false;     // Läuft rein auf Akku
 }
 
 
