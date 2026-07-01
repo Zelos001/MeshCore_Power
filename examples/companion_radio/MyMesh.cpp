@@ -2217,16 +2217,23 @@ void MyMesh::checkSerialInterface() {
   #define ADC_PIN 1 // Heltec V3/V4 Batterie-Messpin
 #endif
 
-bool MyMesh::check_if_usb_connected() {
-    int raw = analogRead(ADC_PIN);
-    // Berechnet die Spannung am Heltec ADC-Pin
-    float voltage = (raw / 4095.0f) * 2.0f * 3.3f * 1.1f; 
+//bool MyMesh::check_if_usb_connected() {
+//    int raw = analogRead(ADC_PIN);
+//    // Berechnet die Spannung am Heltec ADC-Pin
+//    float voltage = (raw / 4095.0f) * 2.0f * 3.3f * 1.1f; 
+//
+//    if (voltage > 4.30f) {
+//        return true; // USB speist Strom ein (Spannung wird hochgedrückt)
+//    }
+//    return false; // Reiner Akkubetrieb
+//}
+#include "USB.h"
 
-    if (voltage > 4.30f) {
-        return true; // USB speist Strom ein (Spannung wird hochgedrückt)
-    }
-    return false; // Reiner Akkubetrieb
+bool MyMesh::check_if_usb_connected() {
+    // Prüft, ob der USB-Host Strom liefert / verbunden ist
+    return USB::connected(); 
 }
+
 
 void MyMesh::check_power_source() {
     bool usb_present = check_if_usb_connected(); 
