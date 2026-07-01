@@ -2231,15 +2231,30 @@ bool MyMesh::check_if_usb_connected() {
 void MyMesh::check_power_source() {
     bool usb_present = check_if_usb_connected(); 
 
-    if (!usb_present && !this->usb_power_lost) {
-        // Nutzt die echte native MeshCore-Sende-API aus deinem Repository
-        this->sendChannelTextPacket(2, "offline"); 
-        this->usb_power_lost = true; 
-    } 
-    else if (usb_present && this->usb_power_lost) {
-        // Sendet die Statusmeldung "online" an Kanal-Index 2
-        this->sendChannelTextPacket(2, "online");  
-        this->usb_power_lost = false; 
+    // Wir senden nur, wenn sich der Status physisch geändert hat
+    if ((!usb_present && !this->usb_power_lost) || (usb_present && this->usb_power_lost)) {
+        
+        // 1. Textnachricht festlegen
+        const char* msg = usb_present ? "online" : "offline";
+        uint16_t msg_len = strlen(msg);
+
+        // 2. Ein echtes MeshPacket-Objekt aus deinem Core erstellen
+        MeshPacket packet;
+        
+        // 3. Paket-Header füllen (Werte basierend auf deinem Core-Protokoll)
+        packet.header.target = 0xFFFF;       // 0xFFFF = Broadcast an alle Nodes
+        packet.header.port = 1;              // Port 1 ist im Protokoll fast immer der CHAT_PORT
+        packet.header.channel = 2;           // Kanal-Index 2, den du ansprechen wolltest
+        packet.header.length = msg_len;      // Länge des Texts
+
+        // 4. Text in den Payload des Pakets kopieren
+        memcpy(packet.payload, msg, msg_len);
+
+        // 5. Die einzig wahre, physisch existierende Funktion deines Cores aufrufen
+        this->sendPacket(packet);
+
+        // Status für den nächsten Durchlauf umkehren
+        this->usb_power_lost = !usb_present; 
     }
 }
 
