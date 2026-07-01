@@ -2234,7 +2234,7 @@ void MyMesh::check_power_source() {
     // Nur senden, wenn sich der Status tatsächlich geändert hat
     if ((!usb_present && !this->usb_power_lost) || (usb_present && this->usb_power_lost)) {
         
-        meshCore.sendChannelText(2, "online");
+        this->sendChannelText(2, "online");
 
         // Status für den nächsten Durchlauf umkehren
         this->usb_power_lost = !usb_present; 
