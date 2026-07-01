@@ -107,6 +107,8 @@ protected:
   bool usb_power_lost = false; 
   unsigned long last_power_check = 0;
   const unsigned long CHECK_INTERVAL = 5000; // Alle 5 Sekunden prüfen
+  bool check_if_usb_connected();
+  void check_power_source();
 
   float getAirtimeBudgetFactor() const override;
   int getInterferenceThreshold() const override;
