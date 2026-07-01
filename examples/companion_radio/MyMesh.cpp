@@ -2234,8 +2234,28 @@ void MyMesh::check_power_source() {
     // Nur senden, wenn sich der Status tatsächlich geändert hat
     if ((!usb_present && !this->usb_power_lost) || (usb_present && this->usb_power_lost)) {
         
-        this->sendChannelText(2, "online");
-
+// 1. Erstelle ein leeres Mesh-Paket über den Framework-Allokator
+mesh::Packet* pkt = this->createPacket();
+if (pkt != nullptr) {
+    // 2. Setze die Zieladresse auf Broadcast (an alle)
+    pkt->header.to = mesh::ADDR_BROADCAST;
+    
+    // 3. Kanalindex setzen (Achtung: Kanäle sind oft 0-indiziert. Kanal 6 = Index 5, oder direkt 6)
+    pkt->header.channel_idx = 6; 
+    
+    // 4. Protokoll-Typ als App-Text deklarieren
+    pkt->header.app = mesh::APP_TEXT; 
+    
+    // 5. Text-Payload kopieren
+    const char* msg = "online";
+    size_t len = strlen(msg);
+    if (len > sizeof(pkt->payload)) len = sizeof(pkt->payload);
+    memcpy(pkt->payload, msg, len);
+    pkt->payload_len = len;
+    
+    // 6. Das fertige Paket in die Sende-Queue einspeisen
+    this->queuePacket(pkt);
+}
         // Status für den nächsten Durchlauf umkehren
         this->usb_power_lost = !usb_present; 
     }
