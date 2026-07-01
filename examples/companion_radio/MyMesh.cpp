@@ -2213,6 +2213,37 @@ void MyMesh::checkSerialInterface() {
   }
 }
 
+#ifndef ADC_PIN
+  #define ADC_PIN 1 // Heltec V3/V4 Batterie-Messpin
+#endif
+
+bool MyMesh::check_if_usb_connected() {
+    int raw = analogRead(ADC_PIN);
+    // Berechnet die Spannung am Heltec ADC-Pin
+    float voltage = (raw / 4095.0f) * 2.0f * 3.3f * 1.1f; 
+
+    if (voltage > 4.30f) {
+        return true; // USB speist Strom ein (Spannung wird hochgedrückt)
+    }
+    return false; // Reiner Akkubetrieb
+}
+
+void MyMesh::check_power_source() {
+    bool usb_present = check_if_usb_connected(); 
+
+    if (!usb_present && !this->usb_power_lost) {
+        // Nutzt die echte native MeshCore-Sende-API aus deinem Repository
+        this->sendChannelTextPacket(2, "offline"); 
+        this->usb_power_lost = true; 
+    } 
+    else if (usb_present && this->usb_power_lost) {
+        // Sendet die Statusmeldung "online" an Kanal-Index 2
+        this->sendChannelTextPacket(2, "online");  
+        this->usb_power_lost = false; 
+    }
+}
+
+
 void MyMesh::loop() {
   BaseChatMesh::loop();
 
@@ -2231,6 +2262,13 @@ void MyMesh::loop() {
 #ifdef DISPLAY_CLASS
   if (_ui) _ui->setHasConnection(_serial->isConnected());
 #endif
+
+// DEIN NEUER USB-POWER-CHECK
+if (millis() - this->last_power_check >= this->CHECK_INTERVAL) {
+    this->last_power_check = millis();
+    this->check_power_source();
+}  
+  
 }
 
 bool MyMesh::advert() {
@@ -2246,7 +2284,9 @@ bool MyMesh::advert() {
   } else {
     return false;
   }
+ 
 }
+
 
 // To check if there is pending work
 bool MyMesh::hasPendingWork() const {
