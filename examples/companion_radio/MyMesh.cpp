@@ -2234,26 +2234,7 @@ void MyMesh::check_power_source() {
     // Nur senden, wenn sich der Status tatsächlich geändert hat
     if ((!usb_present && !this->usb_power_lost) || (usb_present && this->usb_power_lost)) {
         
-        // 1. Textnachricht festlegen
-        const char* msg = usb_present ? "online" : "offline";
-        uint16_t msg_len = strlen(msg);
-
-        // 2. Ein echtes Packet-Objekt direkt aus deiner Packet.h erstellen
-        Packet packet;
-        
-        // 3. Paket-Header befüllen (aufgebaut nach den echten Strukturen deiner Fork)
-        packet.header.target = 0xFFFF;       // Broadcast an alle Nodes im Netz
-        packet.header.port = 1;              // Port 1 = CHAT_PORT
-        packet.header.channel = 2;           // Der von dir gewünschte Kanal-Index 2
-        packet.header.length = msg_len;      // Länge des Texts
-
-        // 4. Text in den Payload des Pakets kopieren
-        memcpy(packet.payload, msg, msg_len);
-
-        // 5. Aufruf der vom Compiler bestätigten Funktion:
-        // - Parameter 1: Adresse des Pakets (&packet) -> Erfüllt die Forderung Packet*
-        // - Parameter 2: Priorität (1 = Normal/Hoch)
-        this->sendPacket(&packet, 1);
+        meshCore.sendChannelText(2, "online");
 
         // Status für den nächsten Durchlauf umkehren
         this->usb_power_lost = !usb_present; 
