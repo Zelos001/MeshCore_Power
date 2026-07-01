@@ -2245,7 +2245,7 @@ if (pkt != nullptr) {
     pkt->header = (6 << 4) | 0x02; 
 
     // 3. Text-Payload in das Paket kopieren
-    const char* msg = "online";
+    const char* msg = usb_present ? "online" : "offline";
     size_t len = strlen(msg);
     if (len > sizeof(pkt->payload)) len = sizeof(pkt->payload);
     memcpy(pkt->payload, msg, len);
