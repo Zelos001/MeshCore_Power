@@ -2231,32 +2231,22 @@ bool MyMesh::check_if_usb_connected() {
 void MyMesh::check_power_source() {
     bool usb_present = check_if_usb_connected(); 
 
-    // Wir senden nur, wenn sich der Status physisch geändert hat
+    // Senden nur bei einer echten Statusänderung
     if ((!usb_present && !this->usb_power_lost) || (usb_present && this->usb_power_lost)) {
         
-        // 1. Textnachricht festlegen
-        const char* msg = usb_present ? "online" : "offline";
-        uint16_t msg_len = strlen(msg);
+        // Nachricht als Arduino-String vorbereiten (wird von MeshCore intern genutzt)
+        String msg = usb_present ? "online" : "offline";
 
-        // 2. Ein echtes MeshPacket-Objekt aus deinem Core erstellen
-        MeshPacket packet;
-        
-        // 3. Paket-Header füllen (Werte basierend auf deinem Core-Protokoll)
-        packet.header.target = 0xFFFF;       // 0xFFFF = Broadcast an alle Nodes
-        packet.header.port = 1;              // Port 1 ist im Protokoll fast immer der CHAT_PORT
-        packet.header.channel = 2;           // Kanal-Index 2, den du ansprechen wolltest
-        packet.header.length = msg_len;      // Länge des Texts
+        // Wir nutzen die native Methode 'sendDataPacket', die in MeshCore vererbt wird.
+        // Port 1 ist im System der CHAT_PORT.
+        // Parameter: (Port, Daten-Pointer, Länge, Ziel_Node [0xFFFF = Broadcast])
+        this->sendDataPacket(1, (uint8_t*)msg.c_str(), msg.length(), 0xFFFF);
 
-        // 4. Text in den Payload des Pakets kopieren
-        memcpy(packet.payload, msg, msg_len);
-
-        // 5. Die einzig wahre, physisch existierende Funktion deines Cores aufrufen
-        this->sendPacket(packet);
-
-        // Status für den nächsten Durchlauf umkehren
+        // Status für den nächsten Durchlauf invertieren
         this->usb_power_lost = !usb_present; 
     }
 }
+
 
 
 void MyMesh::loop() {
