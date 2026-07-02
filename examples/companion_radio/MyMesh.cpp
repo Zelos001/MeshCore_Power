@@ -2230,30 +2230,22 @@ void MyMesh::checkSerialInterface() {
 #include "USB.h"
 
 bool MyMesh::check_if_usb_connected() {
-    // 1. Schwellenwert definieren:
-    // Der ESP32-S3 ADC liefert bei 12-Bit Werte von 0 bis 4095.
-    // Ein voller Akku (4.2V) liegt nach dem Teiler meist bei ca. 2100-2400.
-    // Liegt USB an, springt der Wert deutlich über 2800+ (oft nahe 3000+).
-    const int USB_THRESHOLD = 2700; 
+    // 1. Schwellenwert in Millivolt definieren:
+    // Ein Akku erreicht niemals 4400mV. Werte darüber entstehen 
+    // nur, wenn die USB-Ladespannung (ca. 4.5V - 5.0V) anliegt.
+    const uint16_t USB_THRESHOLD_MV = 4090; 
 
-    // 2. Messschaltung des Heltec V3 aktivieren via PIN_CTRL (GPIO 37)
-    pinMode(PIN_CTRL, OUTPUT);
-    digitalWrite(PIN_CTRL, LOW); // LOW schaltet den Spannungsteiler beim V3 aktiv
-    delay(5);                    // Kurze Pause, damit sich die Spannung stabilisiert
+    // 2. MeshCore-eigene Funktion aufrufen (liefert z.B. 3700 oder 4550)
+    // Hinweis: Je nachdem, wo Sie sich in der Klasse befinden, reicht 'getBattMilliVolts()' 
+    // oder die Abfrage über das Board-Objekt (z.B. board->getBattMilliVolts())
+    uint16_t current_mv = getBattMilliVolts(); 
 
-    // 3. Analogwert von GPIO 1 (Batterie-Read-Pin) einlesen
-    // Falls die Konstante '1' eine Fehlermeldung wirft, nutzen Sie alternativ analogRead(1);
-    int raw_voltage = analogRead(1); 
-
-    // 4. Schaltung wieder schlafen legen, um Batterie zu sparen
-    digitalWrite(PIN_CTRL, HIGH); 
-
-    // 5. Auswertung: Ist der Wert höher als ein normaler Akku liefern kann?
-    if (raw_voltage > USB_THRESHOLD) {
-        return true;  // USB ist definitiv eingesteckt
+    // 3. Auswertung
+    if (current_mv > USB_THRESHOLD_MV) {
+        return true;  // Spannung ist höher als Akku-Maximum -> USB steckt
     }
     
-    return false;     // Läuft rein auf Akku
+    return false;     // Normale Akkuspannung
 }
 
 
