@@ -2274,8 +2274,8 @@ bool MyMesh::check_if_usb_connected() {
     uint16_t vbat = sum / SAMPLES;
 
     // Passe diese Werte ggf. an deine tatsächlichen Messungen an:
-    const uint16_t CHARGING_THRESHOLD = 4090;   // Oberhalb → sehr wahrscheinlich USB/charging
-    const uint16_t BATTERY_THRESHOLD  = 4070;   // Unterhalb → sicher nur Batterie
+    const uint16_t CHARGING_THRESHOLD = 4090;   // 4080 Oberhalb → sehr wahrscheinlich USB/charging
+    const uint16_t BATTERY_THRESHOLD  = 4070;   // 4020  Unterhalb → sicher nur Batterie
 
     static bool confirmed_usb_power = false;
     static uint8_t confirm_counter = 0;
