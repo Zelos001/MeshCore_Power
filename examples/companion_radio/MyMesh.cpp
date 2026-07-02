@@ -2223,21 +2223,19 @@ void MyMesh::sendTextToChannel(uint8_t channelIdx, const char* text) {
         return;
     }
 
-    uint32_t now = getRTCClock()->getCurrentTime();   // Korrekte Art, die Zeit zu holen
+    uint32_t now = getRTCClock()->getCurrentTime();
 
-    mesh::GroupChannel* ch = BaseChatMesh::getGroupChannel(channelIdx);
-    // Alternativ: this->getGroupChannel(channelIdx) falls es geerbt ist
-
-    if (ch == nullptr) {
+    ChannelDetails ch;
+    if (!getChannel(channelIdx, ch)) {
         Serial.printf("Fehler: Channel %d nicht gefunden!\n", channelIdx);
         return;
     }
 
-    const char* senderName = "MeinDevice";
+    const char* senderName = _prefs.node_name ? _prefs.node_name : "MeshCore";
 
-    bool success = BaseChatMesh::sendGroupMessage(
+    bool success = sendGroupMessage(
         now,
-        *ch,
+        ch.channel,
         senderName,
         text,
         strlen(text)
