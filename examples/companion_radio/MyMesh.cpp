@@ -2217,20 +2217,36 @@ void MyMesh::checkSerialInterface() {
   #define ADC_PIN 1 // Heltec V3/V4 Batterie-Messpin
 #endif
 
-void sendTextToChannel(uint8_t channelIdx, const char* text) {
-    if (text == nullptr || text[0] == '\0') return;
-
-    uint32_t now = getCurrentTime();
-    mesh::GroupChannel* ch = getGroupChannel(channelIdx);
-    if (ch == nullptr) {
-        Serial.printf("Channel %d nicht gefunden!\n", channelIdx);
+void MyMesh::sendTextToChannel(uint8_t channelIdx, const char* text) {
+    if (text == nullptr || text[0] == '\0') {
+        Serial.println("Fehler: Leerer Text");
         return;
     }
 
-    bool success = sendGroupMessage(now, *ch, "MeinDevice", text, strlen(text));
+    uint32_t now = getRTCClock()->getCurrentTime();   // Korrekte Art, die Zeit zu holen
+
+    mesh::GroupChannel* ch = BaseChatMesh::getGroupChannel(channelIdx);
+    // Alternativ: this->getGroupChannel(channelIdx) falls es geerbt ist
+
+    if (ch == nullptr) {
+        Serial.printf("Fehler: Channel %d nicht gefunden!\n", channelIdx);
+        return;
+    }
+
+    const char* senderName = "MeinDevice";
+
+    bool success = BaseChatMesh::sendGroupMessage(
+        now,
+        *ch,
+        senderName,
+        text,
+        strlen(text)
+    );
 
     if (success) {
-        Serial.printf("Gesendet an Channel %d: %s\n", channelIdx, text);
+        Serial.printf("✓ Gesendet an Channel %d: %s\n", channelIdx, text);
+    } else {
+        Serial.printf("✗ Senden an Channel %d fehlgeschlagen\n", channelIdx);
     }
 }
 
