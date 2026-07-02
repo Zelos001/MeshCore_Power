@@ -2264,7 +2264,7 @@ void MyMesh::sendTextToChannel(uint8_t channelIdx, const char* text) {
 //}
 bool MyMesh::check_if_usb_connected() {
     // === Verbesserte USB-Erkennung mit Mittelwert, Hysterese und Debounce ===
-    float vbat = getBatteryVoltage();     // existiert bereits in HeltecV4Board / target
+    float vbat = board->getBatteryVoltage();   // <--- das war der Fehler
     const int SAMPLES = 8;
     uint32_t sum = 0;
     for (int i = 0; i < SAMPLES; i++) {
