@@ -2264,7 +2264,7 @@ void MyMesh::sendTextToChannel(uint8_t channelIdx, const char* text) {
 //}
 bool MyMesh::check_if_usb_connected() {
     // === Verbesserte USB-Erkennung mit Mittelwert, Hysterese und Debounce ===
-    float vbat = board->getBatteryVoltage();   // <--- das war der Fehler
+    //float vbat = board->getBatteryVoltage();   // <--- das war der Fehler
     const int SAMPLES = 8;
     uint32_t sum = 0;
     for (int i = 0; i < SAMPLES; i++) {
@@ -2274,8 +2274,8 @@ bool MyMesh::check_if_usb_connected() {
     uint16_t vbat = sum / SAMPLES;
 
     // Passe diese Werte ggf. an deine tatsächlichen Messungen an:
-    const uint16_t CHARGING_THRESHOLD = 4080;   // Oberhalb → sehr wahrscheinlich USB/charging
-    const uint16_t BATTERY_THRESHOLD  = 4020;   // Unterhalb → sicher nur Batterie
+    const uint16_t CHARGING_THRESHOLD = 4090;   // Oberhalb → sehr wahrscheinlich USB/charging
+    const uint16_t BATTERY_THRESHOLD  = 4070;   // Unterhalb → sicher nur Batterie
 
     static bool confirmed_usb_power = false;
     static uint8_t confirm_counter = 0;
