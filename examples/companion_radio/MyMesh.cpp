@@ -2248,20 +2248,66 @@ void MyMesh::sendTextToChannel(uint8_t channelIdx, const char* text) {
     }
 }
 
+//bool MyMesh::check_if_usb_connected() {
+//    // 1. Schwellenwert in Millivolt definieren
+//    const uint16_t USB_THRESHOLD_MV = 4090; 
+//
+//    // 2. Zugriff mit Punkt (.) statt Pfeil (->)
+//    uint16_t current_mv = board.getBattMilliVolts(); 
+//
+//    // 3. Auswertung
+//    if (current_mv > USB_THRESHOLD_MV) {
+//        return true;  
+//    }
+//    
+//    return false;     
+//}
 bool MyMesh::check_if_usb_connected() {
-    // 1. Schwellenwert in Millivolt definieren
-    const uint16_t USB_THRESHOLD_MV = 4090; 
+    // === Verbesserte USB-Erkennung mit Mittelwert, Hysterese und Debounce ===
 
-    // 2. Zugriff mit Punkt (.) statt Pfeil (->)
-    uint16_t current_mv = board.getBattMilliVolts(); 
-
-    // 3. Auswertung
-    if (current_mv > USB_THRESHOLD_MV) {
-        return true;  
+    const int SAMPLES = 8;
+    uint32_t sum = 0;
+    for (int i = 0; i < SAMPLES; i++) {
+        sum += board.getBattMilliVolts();
+        delay(1);
     }
-    
-    return false;     
+    uint16_t vbat = sum / SAMPLES;
+
+    // Passe diese Werte ggf. an deine tatsächlichen Messungen an:
+    const uint16_t CHARGING_THRESHOLD = 4080;   // Oberhalb → sehr wahrscheinlich USB/charging
+    const uint16_t BATTERY_THRESHOLD  = 4020;   // Unterhalb → sicher nur Batterie
+
+    static bool confirmed_usb_power = false;
+    static uint8_t confirm_counter = 0;
+    const uint8_t CONFIRM_COUNT_NEEDED = 3;   // ca. 15 Sekunden bei 5s-Intervall
+
+    bool raw_reading;
+    if (vbat >= CHARGING_THRESHOLD) {
+        raw_reading = true;
+    } else if (vbat <= BATTERY_THRESHOLD) {
+        raw_reading = false;
+    } else {
+        raw_reading = confirmed_usb_power;     // unsicherer Bereich → alten Zustand halten
+    }
+
+    if (raw_reading == confirmed_usb_power) {
+        confirm_counter = 0;
+    } else {
+        confirm_counter++;
+        if (confirm_counter >= CONFIRM_COUNT_NEEDED) {
+            confirmed_usb_power = raw_reading;
+            confirm_counter = 0;
+        }
+    }
+
+    // Debug (zum Testen auskommentieren):
+    // Serial.printf("VBAT: %d mV | confirmed_usb=%d\n", vbat, confirmed_usb_power);
+
+    return confirmed_usb_power;
 }
+
+
+
 
 
 void MyMesh::check_power_source() {
