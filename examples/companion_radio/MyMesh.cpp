@@ -2227,14 +2227,14 @@ void MyMesh::checkSerialInterface() {
 //    }
 //    return false; // Reiner Akkubetrieb
 //}
-#include "USB.h"
+//#include "USB.h"
 
 bool MyMesh::check_if_usb_connected() {
     // 1. Schwellenwert in Millivolt definieren
     const uint16_t USB_THRESHOLD_MV = 4090; 
 
-    // 2. MeshCore Board-Objekt nach der Akkuspannung fragen
-    uint16_t current_mv = board->getBattMilliVolts(); 
+    // 2. Zugriff mit Punkt (.) statt Pfeil (->)
+    uint16_t current_mv = board.getBattMilliVolts(); 
 
     // 3. Auswertung
     if (current_mv > USB_THRESHOLD_MV) {
