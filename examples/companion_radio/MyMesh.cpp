@@ -2230,22 +2230,18 @@ void MyMesh::checkSerialInterface() {
 #include "USB.h"
 
 bool MyMesh::check_if_usb_connected() {
-    // 1. Schwellenwert in Millivolt definieren:
-    // Ein Akku erreicht niemals 4400mV. Werte darüber entstehen 
-    // nur, wenn die USB-Ladespannung (ca. 4.5V - 5.0V) anliegt.
+    // 1. Schwellenwert in Millivolt definieren
     const uint16_t USB_THRESHOLD_MV = 4090; 
 
-    // 2. MeshCore-eigene Funktion aufrufen (liefert z.B. 3700 oder 4550)
-    // Hinweis: Je nachdem, wo Sie sich in der Klasse befinden, reicht 'getBattMilliVolts()' 
-    // oder die Abfrage über das Board-Objekt (z.B. board->getBattMilliVolts())
-    uint16_t current_mv = getBattMilliVolts(); 
+    // 2. MeshCore Board-Objekt nach der Akkuspannung fragen
+    uint16_t current_mv = board->getBattMilliVolts(); 
 
     // 3. Auswertung
     if (current_mv > USB_THRESHOLD_MV) {
-        return true;  // Spannung ist höher als Akku-Maximum -> USB steckt
+        return true;  
     }
     
-    return false;     // Normale Akkuspannung
+    return false;     
 }
 
 
