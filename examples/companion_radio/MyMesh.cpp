@@ -2220,14 +2220,14 @@ void MyMesh::checkSerialInterface() {
 void sendTextToChannel(uint8_t channelIdx, const char* text) {
     if (text == nullptr || text[0] == '\0') return;
 
-    uint32_t now = mesh.getCurrentTime();
-    mesh::GroupChannel* ch = mesh.getGroupChannel(channelIdx);
+    uint32_t now = getCurrentTime();
+    mesh::GroupChannel* ch = getGroupChannel(channelIdx);
     if (ch == nullptr) {
         Serial.printf("Channel %d nicht gefunden!\n", channelIdx);
         return;
     }
 
-    bool success = mesh.sendGroupMessage(now, *ch, "MeinDevice", text, strlen(text));
+    bool success = sendGroupMessage(now, *ch, "MeinDevice", text, strlen(text));
 
     if (success) {
         Serial.printf("Gesendet an Channel %d: %s\n", channelIdx, text);
