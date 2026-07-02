@@ -2217,17 +2217,22 @@ void MyMesh::checkSerialInterface() {
   #define ADC_PIN 1 // Heltec V3/V4 Batterie-Messpin
 #endif
 
-//bool MyMesh::check_if_usb_connected() {
-//    int raw = analogRead(ADC_PIN);
-//    // Berechnet die Spannung am Heltec ADC-Pin
-//    float voltage = (raw / 4095.0f) * 2.0f * 3.3f * 1.1f; 
-//
-//    if (voltage > 4.30f) {
-//        return true; // USB speist Strom ein (Spannung wird hochgedrückt)
-//    }
-//    return false; // Reiner Akkubetrieb
-//}
-//#include "USB.h"
+void sendTextToChannel(uint8_t channelIdx, const char* text) {
+    if (text == nullptr || text[0] == '\0') return;
+
+    uint32_t now = mesh.getCurrentTime();
+    mesh::GroupChannel* ch = mesh.getGroupChannel(channelIdx);
+    if (ch == nullptr) {
+        Serial.printf("Channel %d nicht gefunden!\n", channelIdx);
+        return;
+    }
+
+    bool success = mesh.sendGroupMessage(now, *ch, "MeinDevice", text, strlen(text));
+
+    if (success) {
+        Serial.printf("Gesendet an Channel %d: %s\n", channelIdx, text);
+    }
+}
 
 bool MyMesh::check_if_usb_connected() {
     // 1. Schwellenwert in Millivolt definieren
@@ -2250,30 +2255,9 @@ void MyMesh::check_power_source() {
 
     // Nur senden, wenn sich der Status tatsächlich geändert hat
     if ((!usb_present && !this->usb_power_lost) || (usb_present && this->usb_power_lost)) {
-        
+      const char* msg = usb_present ? "online" : "offline";
+      sendTextToChannel(2, msg);
 
-// 1. Allokiere ein leeres Paket über die vom Compiler bestätigte Methode
-mesh::Packet* pkt = this->createAck(0);
-
-if (pkt != nullptr) {
-    // 2. Kanal 6 im Header kodieren (Bitmaske für Kanal-ID)
-    // MeshCore nutzt die oberen Bits des Headers für den Kanalindex.
-    // Typischerweise: APP_TEXT (0x02) oder über Bitverschiebung: (6 << 4) | 0x02
-    pkt->header = (6 << 4) | 0x02; 
-
-    // 3. Text-Payload in das Paket kopieren
-    const char* msg = usb_present ? "online" : "offline";
-    size_t len = strlen(msg);
-    if (len > sizeof(pkt->payload)) len = sizeof(pkt->payload);
-    memcpy(pkt->payload, msg, len);
-    pkt->payload_len = len;
-
-    // 4. Das Paket als Flood (an alle/Broadcast) in das Netzwerk senden
-    this->sendFlood(pkt);
-}
-
-      
-      
       // Status für den nächsten Durchlauf umkehren
         this->usb_power_lost = !usb_present; 
     }
