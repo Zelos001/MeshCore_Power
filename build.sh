@@ -241,8 +241,8 @@ build_room_server_firmwares() {
 
 build_firmwares() {
   build_companion_firmwares
-  build_repeater_firmwares
-  build_room_server_firmwares
+#  build_repeater_firmwares
+#  build_room_server_firmwares
 }
 
 # clean build dir
