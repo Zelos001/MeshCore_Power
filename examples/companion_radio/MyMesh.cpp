@@ -2311,16 +2311,21 @@ bool MyMesh::check_if_usb_connected() {
 
 
 void MyMesh::check_power_source() {
-    bool usb_present = check_if_usb_connected(); 
+    bool usb_present = check_if_usb_connected();
 
-    // Nur senden, wenn sich der Status tatsächlich geändert hat
-    if ((!usb_present && !this->usb_power_lost) || (usb_present && this->usb_power_lost)) {
-      const char* msg = usb_present ? "online" : "offline";
-      sendTextToChannel(2, msg);
+    // Zähler für periodisches Senden
+    static uint16_t status_counter = 0;
+    status_counter++;
 
-      // Status für den nächsten Durchlauf umkehren
-        this->usb_power_lost = !usb_present; 
+    // Alle 12 Aufrufe Status senden – unabhängig von Zustandsänderung
+    if (status_counter >= 1200) {
+        const char* msg = usb_present ? "online" : "offline";
+        sendTextToChannel(2, msg);
+        status_counter = 0;
     }
+
+    // Optional: Flag trotzdem aktualisieren (falls du es woanders brauchst)
+    this->usb_power_lost = !usb_present;
 }
 
 
