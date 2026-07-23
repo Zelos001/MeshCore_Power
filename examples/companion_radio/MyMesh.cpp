@@ -2314,14 +2314,14 @@ void MyMesh::check_power_source() {
     bool usb_present = check_if_usb_connected();
 
     // Zähler für periodisches Senden
-    static uint16_t status_counter = 0;
-    status_counter++;
 
-    // Alle 12 Aufrufe Status senden – unabhängig von Zustandsänderung
-    if (status_counter >= 1200) {
+    this->status_counter++;
+
+    // Alle 1200 Aufrufe Status senden – unabhängig von Zustandsänderung
+    if (this->status_counter >= 1200) {
         const char* msg = usb_present ? "online" : "offline";
         sendTextToChannel(2, msg);
-        status_counter = 0;
+        this->status_counter = 0;
     }
 
     // Optional: Flag trotzdem aktualisieren (falls du es woanders brauchst)
